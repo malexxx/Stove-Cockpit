@@ -1,5 +1,5 @@
 """
-Package clients externes pour Nobis.Supervisor.
+Package clients externes pour Stove Cockpit.
 Regroupe les validateurs anti-SSRF, le pool HTTPX partagé, les notifications webhook,
 la météo Open-Meteo, le client Cloud Agua IOT et la passerelle locale UART/RS485.
 """

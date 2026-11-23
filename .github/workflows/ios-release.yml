@@ -9,6 +9,7 @@ jobs:
   ios-unsigned:
     name: Build Unsigned .ipa on macOS
     runs-on: macos-latest
+    timeout-minutes: 25
     permissions:
       contents: write
     steps:

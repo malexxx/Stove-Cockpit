@@ -1,5 +1,5 @@
 """
-Package base de données SQLite multi-bases pour Nobis.Supervisor.
+Package base de données SQLite multi-bases pour Stove Cockpit.
 Regroupe connexions/sessions, migrations, journaux applicatifs/conteneur et seeder simulation.
 """
 from config import DATA_DIR, MODE_DB_PATHS, SYSTEM_DB_PATH

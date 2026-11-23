@@ -6,10 +6,18 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend-tests:
     name: Backend Python & Matter Bridge
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,7 +32,9 @@ jobs:
       - name: Install backend dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r backend/requirements.txt pytest schemathesis
+          pip install -r backend/requirements.txt pytest schemathesis ruff
+      - name: Lint Python code (Ruff)
+        run: ruff check backend
       - name: Build frontend bundle for SPA tests
         working-directory: frontend
         run: |
@@ -42,6 +52,7 @@ jobs:
   frontend-tests:
     name: Frontend Vitest & Vite Build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

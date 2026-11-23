@@ -1,3 +1,4 @@
+// Configuration Vite & Vitest pour Stove Cockpit (injection de partiels HTML et alias @shared).
 import fs from "node:fs";
 import path from "node:path";
 import { defineConfig } from "vite";

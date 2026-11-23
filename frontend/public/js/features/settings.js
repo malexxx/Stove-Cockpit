@@ -999,26 +999,16 @@ async function restoreSystemBackupFile(inputEl) {
   }
   try {
     showToast("📥 Restauration de la sauvegarde en cours...");
-    const res = await window.stoveProvider.container.request("/api/system/backup/restore", {
-      method: "POST",
-      headers: getInstallerHeaders({ "Content-Type": "application/zip" }),
-      body: file,
-      timeoutMs: 60000,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.status === 403) {
-      showToast("🔒 Authentification installateur requise : déverrouillez l'onglet Expert & Registres.", true);
-      return;
-    }
-    if (!res.ok) {
-      showToast(data.detail || "Échec de la restauration de la sauvegarde.", true);
-      return;
-    }
+    const data = await window.stoveProvider.restoreBackupFile(file, getInstallerHeaders());
     showToast(`✅ ${data.message || "Sauvegarde restaurée avec succès !"}`);
     if (typeof loadDashboard === "function") await loadDashboard();
     loadStorageStatus();
   } catch (err) {
-    showToast("Erreur réseau lors de la restauration de la sauvegarde.", true);
+    if (err?.status === 403) {
+      showToast("🔒 Authentification installateur requise : déverrouillez l'onglet Expert & Registres.", true);
+    } else {
+      showToast(err?.message || "Échec de la restauration de la sauvegarde.", true);
+    }
   } finally {
     inputEl.value = "";
   }

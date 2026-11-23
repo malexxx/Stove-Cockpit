@@ -310,8 +310,8 @@ class AguaCloudClient:
                         if j.get("refresh_token"):
                             self.refresh_token = j["refresh_token"]
                         return
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Échec refreshToken Agua IOT, bascule vers reconnexion : %s", exc)
         await self.login_and_discover(
             settings.get("agua_email", ""),
             settings.get("agua_password", ""),

@@ -1,3 +1,4 @@
+// Pont thermostat Matter local (Google Home / Apple Maison / Home Assistant) pour Stove Cockpit.
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -215,14 +216,14 @@ async function startMatterNode() {
       deviceType: HeatingThermostatDevice.deviceType,
     },
     basicInformation: {
-      vendorName: "Nobis Micronova",
+      vendorName: "Stove Cockpit (Micronova)",
       vendorId: 0xfff1,
       nodeLabel: DEVICE_NAME,
-      productName: "Nobis A10 C Light Style Coax",
-      productLabel: "Nobis A10",
+      productName: DEVICE_NAME,
+      productLabel: DEVICE_NAME,
       productId: 0x8001,
-      serialNumber: "NOBIS-A10-COAX",
-      uniqueId: "nobis-a10-matter-thermostat",
+      serialNumber: "STOVE-COCKPIT-01",
+      uniqueId: "stove-cockpit-matter-thermostat",
       hardwareVersion: 1,
       softwareVersion: 1,
     },

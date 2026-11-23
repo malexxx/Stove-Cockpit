@@ -343,6 +343,7 @@ async function savePlusModeSettings() {
   showToast(`✅ Mode mis à jour : ${window.stoveProvider.getMode()}`);
 }
 
+/** Charge les informations d'appairage mobile depuis le conteneur Mode « + ». */
 async function loadPairingInfo() {
   if (!window.stoveProvider?.isContainerActive?.()) return;
   try {
@@ -350,21 +351,24 @@ async function loadPairingInfo() {
     const urlEl = document.getElementById("pairing-url-hint");
     const tokEl = document.getElementById("pairing-api-token");
     const sumEl = document.getElementById("acc-sum-pairing");
-    if (urlEl) urlEl.value = info.suggested_http_url || window.location.origin;
-    if (tokEl) tokEl.value = info.container_api_token || "";
-    if (sumEl) sumEl.textContent = info.container_api_token ? "HTTP LAN pur • Token actif" : "Token non généré";
+    const token = info.api_token || info.container_api_token || "";
+    if (urlEl) urlEl.value = info.url || info.suggested_http_url || window.location.origin;
+    if (tokEl) tokEl.value = token;
+    if (sumEl) sumEl.textContent = token ? "HTTP LAN pur • Token actif" : "Token non généré";
   } catch (e) {
     console.warn("[Pairing] Chargement impossible:", e);
   }
 }
 
+/** Régénère le jeton X-API-Key du conteneur compagnon (nécessite session Installateur). */
 async function rotateContainerPairingToken() {
   if (!window.stoveProvider?.isContainerActive?.()) return;
   try {
     const hdr = typeof getInstallerHeaders === "function" ? getInstallerHeaders() : {};
     const res = await window.stoveProvider.rotatePairingToken(hdr);
     const tokEl = document.getElementById("pairing-api-token");
-    if (tokEl && res.container_api_token) tokEl.value = res.container_api_token;
+    const newTok = res.api_token || res.container_api_token || "";
+    if (tokEl && newTok) tokEl.value = newTok;
     showToast("🔄 Nouveau Token API généré ! Mettez à jour vos appareils mobiles.");
   } catch (e) {
     showToast("Erreur rotation token : " + e.message, true);

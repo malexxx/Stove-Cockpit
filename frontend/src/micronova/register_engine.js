@@ -1,3 +1,4 @@
+// Moteur dynamique universel de décodage et détection de capacités Micronova Agua IOT (parité backend).
 import schema from "@shared/micronova_schema.json";
 import { evaluateMicronovaFormula } from "./formula_eval.js";
 
@@ -290,22 +291,29 @@ export function prepareWriteValue(regMeta, value) {
   return intVal;
 }
 
+const STATUS_KEYWORD_RULES = [
+  [["ECO"], 8],
+  [["STAND"], 9],
+  [["COOL", "SPEGN", "ARRET", "ARRÊT"], 7],
+  [["CLEAN", "PULIZ", "NETTOY"], 6],
+  [["WORK", "LAVOR", "TRAVAIL"], 5],
+  [["IGNIT", "ACCENS", "ALLUM", "START"], 4],
+  [["LOAD", "CARIC"], 3],
+  [["PREHEAT", "RISCALD"], 2],
+  [["CHECK", "WAIT", "ATTEND"], 1],
+];
+
 export function inferNormalizedStatusCode(statusDesc, rawStatus) {
   if (statusDesc) {
     const up = String(statusDesc).trim().toUpperCase();
     if (up.includes("ALARM") || up.includes("ALLARM")) return up.includes("MEM") ? 11 : 10;
+    if (up === "ON") return 5;
     for (const kw of STATUS_OFF_KEYWORDS) {
       if (up.includes(kw)) return 0;
     }
-    if (up.includes("ECO")) return 8;
-    if (up.includes("STAND")) return 9;
-    if (up.includes("COOL") || up.includes("SPEGN") || up.includes("ARRET") || up.includes("ARRÊT")) return 7;
-    if (up.includes("CLEAN") || up.includes("PULIZ") || up.includes("NETTOY")) return 6;
-    if (up.includes("WORK") || up.includes("LAVOR") || up.includes("TRAVAIL") || up === "ON") return 5;
-    if (up.includes("IGNIT") || up.includes("ACCENS") || up.includes("ALLUM") || up.includes("START")) return 4;
-    if (up.includes("LOAD") || up.includes("CARIC")) return 3;
-    if (up.includes("PREHEAT") || up.includes("RISCALD")) return 2;
-    if (up.includes("CHECK") || up.includes("WAIT") || up.includes("ATTEND")) return 1;
+    for (const [keywords, normalized] of STATUS_KEYWORD_RULES) {
+      if (keywords.some((kw) => up.includes(kw))) return normalized;
+    }
   }
   return rawStatus !== undefined && rawStatus !== null ? Number(rawStatus) : 0;
 }

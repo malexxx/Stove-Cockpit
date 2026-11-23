@@ -243,7 +243,7 @@ def _validate_github_url(url: str) -> str:
 def _github_headers(*, include_auth: bool = True) -> dict[str, str]:
     headers = {
         "Accept": "application/vnd.github+json",
-        "User-Agent": f"Nobis.Supervisor/{config.APP_VERSION}",
+        "User-Agent": f"StoveCockpit/{config.APP_VERSION}",
     }
     if include_auth:
         token = os.environ.get("GITHUB_TOKEN", "").strip()
@@ -976,7 +976,7 @@ async def _notify_update_available(target_data: str, check_res: dict[str, Any]) 
         if webhook_url:
             await notification_service.send_webhook(
                 webhook_url,
-                "⬆️ Mise à jour Nobis.Supervisor disponible",
+                "⬆️ Mise à jour Stove Cockpit disponible",
                 check_res["message"],
                 f"update_{remote_sha[:7]}",
                 mode,

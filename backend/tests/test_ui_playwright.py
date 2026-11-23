@@ -14,68 +14,65 @@ from routers.dashboard import render_spa_html
 APP_ORIGIN = "http://nobis.local"
 
 
+_STATIC_PREFIXES = (
+    f"{APP_ORIGIN}/static/",
+    f"{APP_ORIGIN}/css/",
+    f"{APP_ORIGIN}/js/",
+    f"{APP_ORIGIN}/vendor/",
+    f"{APP_ORIGIN}/assets/",
+)
+_MOCK_API_RESPONSES = {
+    "/api/latest": '''{
+        "latest": {
+            "status_code": 5, "status_label": "TRAVAIL (Normal)",
+            "temp_ambient": 20.5, "temp_amb_setpoint": 21.0,
+            "temp_fumes": 165.0, "pellet_hopper_pct": 82.0, "pellet_daily_kg": 4.5
+        },
+        "comm_status": {"connected": true, "comm_mode": "simulation"}
+    }''',
+    "/api/silence/status": '{"active": false}',
+    "/api/dashboard": '{"series": [], "latest": {"status_code": 5}}',
+}
+
+
+def _fulfill_api_route(route, url: str) -> None:
+    if "/api/events" in url:
+        route.abort()
+        return
+    body = next((payload for key, payload in _MOCK_API_RESPONSES.items() if key in url), '{"status": "ok"}')
+    route.fulfill(status=200, content_type="application/json", body=body)
+
+
+def _fulfill_static_route(route, url: str) -> None:
+    rel_path = url.split(APP_ORIGIN + "/", 1)[1].split("?", 1)[0]
+    if rel_path.startswith("static/"):
+        rel_path = rel_path.split("static/", 1)[1]
+    disk_path = os.path.realpath(os.path.join(STATIC_DIR, rel_path))
+    static_root = os.path.realpath(STATIC_DIR)
+    if disk_path.startswith(static_root + os.sep) and os.path.isfile(disk_path):
+        ctype, _ = mimetypes.guess_type(disk_path)
+        with open(disk_path, "rb") as fh:
+            route.fulfill(status=200, content_type=ctype or "application/octet-stream", body=fh.read())
+        return
+    route.fulfill(status=404, body="Not Found")
+
+
 def _attach_app_routes(page: Page) -> None:
-    """Sert la SPA assemblée, les fichiers /static/* depuis le disque et mocke les endpoints /api/*."""
+    """Sert la SPA assemblée, les fichiers statiques depuis le disque et mocke les endpoints /api/*."""
     assembled_html = render_spa_html()
 
     def handle_route(route):
         url = route.request.url
         if url == f"{APP_ORIGIN}/health":
-            route.fulfill(
-                status=200,
-                content_type="application/json",
-                body='{"status": "healthy", "version": "0.0.1"}',
-            )
-            return
-
-        if url.startswith(f"{APP_ORIGIN}/api/"):
-            if "/api/latest" in url:
-                route.fulfill(
-                    status=200,
-                    content_type="application/json",
-                    body='''{
-                        "latest": {
-                            "status_code": 5,
-                            "status_label": "TRAVAIL (Normal)",
-                            "temp_ambient": 20.5,
-                            "temp_amb_setpoint": 21.0,
-                            "temp_fumes": 165.0,
-                            "pellet_hopper_pct": 82.0,
-                            "pellet_daily_kg": 4.5
-                        },
-                        "comm_status": {"connected": true, "comm_mode": "simulation"}
-                    }''',
-                )
-            elif "/api/silence/status" in url:
-                route.fulfill(status=200, content_type="application/json", body='{"active": false}')
-            elif "/api/dashboard" in url:
-                route.fulfill(status=200, content_type="application/json", body='{"series": [], "latest": {"status_code": 5}}')
-            elif "/api/events" in url:
-                route.abort()
-            else:
-                route.fulfill(status=200, content_type="application/json", body='{"status": "ok"}')
-            return
-
-        if url.startswith(f"{APP_ORIGIN}/static/") or url.startswith(f"{APP_ORIGIN}/css/") or url.startswith(f"{APP_ORIGIN}/js/") or url.startswith(f"{APP_ORIGIN}/vendor/") or url.startswith(f"{APP_ORIGIN}/assets/"):
-            rel_path = url.split(APP_ORIGIN + "/", 1)[1].split("?", 1)[0]
-            if rel_path.startswith("static/"):
-                rel_path = rel_path.split("static/", 1)[1]
-            disk_path = os.path.realpath(os.path.join(STATIC_DIR, rel_path))
-            static_root = os.path.realpath(STATIC_DIR)
-            if disk_path.startswith(static_root + os.sep) and os.path.isfile(disk_path):
-                ctype, _ = mimetypes.guess_type(disk_path)
-                with open(disk_path, "rb") as fh:
-                    route.fulfill(status=200, content_type=ctype or "application/octet-stream", body=fh.read())
-                return
-            route.fulfill(status=404, body="Not Found")
-            return
-
-        if url == APP_ORIGIN or url == f"{APP_ORIGIN}/":
+            route.fulfill(status=200, content_type="application/json", body='{"status": "healthy", "version": "0.0.1"}')
+        elif url.startswith(f"{APP_ORIGIN}/api/"):
+            _fulfill_api_route(route, url)
+        elif url.startswith(_STATIC_PREFIXES):
+            _fulfill_static_route(route, url)
+        elif url in (APP_ORIGIN, f"{APP_ORIGIN}/"):
             route.fulfill(status=200, content_type="text/html; charset=utf-8", body=assembled_html)
-            return
-
-        # Ne pas dépendre de CDN externes hors-ligne dans les tests E2E
-        route.abort()
+        else:
+            route.abort()
 
     page.route("**/*", handle_route)
 

@@ -74,7 +74,7 @@ if ("serviceWorker" in navigator && !(window.Capacitor && window.Capacitor.isNat
   window.addEventListener("load", () => {
     if (window.stoveProvider && window.stoveProvider.servedByContainer) {
       navigator.serviceWorker.register("/sw.js", { scope: "/" })
-        .then((reg) => console.log("[PWA] Service Worker actif, scope:", reg.scope))
+        .then((reg) => console.debug("[PWA] Service Worker actif, scope:", reg.scope))
         .catch((err) => console.warn("[PWA] Enregistrement SW ignoré:", err));
     }
   });

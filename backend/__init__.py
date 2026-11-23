@@ -1,1 +1,1 @@
-"""Package superviseur Nobis A10 C Light Style Coax."""
+"""Package serveur Stove Cockpit (supervision Micronova, API Mode + et pont Matter)."""

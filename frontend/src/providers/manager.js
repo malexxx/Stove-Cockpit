@@ -21,6 +21,7 @@ export class ProviderManager {
     this.pollTimer = null;
     this.onStateCallback = null;
     this.lastPayload = null;
+    this._lastDirectFetchAt = 0;
     this.listenersAttached = false;
   }
 
@@ -157,6 +158,7 @@ export class ProviderManager {
       weather_data: weatherData,
     };
     this.lastPayload = payload;
+    this._lastDirectFetchAt = Date.now();
     return payload;
   }
 
@@ -202,15 +204,19 @@ export class ProviderManager {
       this.lastPayload = data;
       return data;
     }
+    if (this.lastPayload && (Date.now() - this._lastDirectFetchAt) < 2500) {
+      return this.lastPayload;
+    }
     return this._fetchDirectTelemetryPayload();
   }
 
-  async pollNow() {
+  async pollNow(force = false) {
     if (this.mode === "container") {
       const r = await this.container.request("/api/poll-now", { method: "POST" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return await r.json();
     }
+    if (force) this._lastDirectFetchAt = 0;
     const data = await this.getLatest();
     if (this.onStateCallback) this.onStateCallback(data);
     return { status: "ok", latest: data.latest, comm_status: data.comm_status };
@@ -235,7 +241,7 @@ export class ProviderManager {
       return this.demo.applyCommands(commands);
     }
     const res = await this.agua.writeRegistersBatch(this.prefs, commands);
-    await this.pollNow().catch(() => {});
+    await this.pollNow(true).catch(() => {});
     return res;
   }
 
@@ -601,8 +607,11 @@ export class ProviderManager {
 
   async restoreBackupFile(file, extraHeaders = {}) {
     this._requireContainer("La restauration ZIP");
-    const fd = new FormData();
-    fd.append("file", file);
-    return this._containerJson("/api/system/backup/restore", { method: "POST", headers: extraHeaders, body: fd, timeoutMs: 60000 });
+    return this._containerJson("/api/system/backup/restore", {
+      method: "POST",
+      headers: { ...extraHeaders, "Content-Type": "application/zip" },
+      body: file,
+      timeoutMs: 60000,
+    });
   }
 }

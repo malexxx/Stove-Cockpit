@@ -5,7 +5,7 @@ import time
 from typing import Any
 
 from clients.security import is_safe_webhook_url
-from config import HOPPER_CAPACITY_KG
+from config import get_hopper_capacity_kg
 from database import db_log
 
 
@@ -78,13 +78,15 @@ class NotificationService:
         if not webhook_url:
             return
         mode = str(record.get("comm_mode", "agua_cloud"))
+        stove_name = str(record.get("stove_name") or settings.get("stove_name") or "Poêle").strip()
+        hopper_cap_kg = get_hopper_capacity_kg(settings)
 
         alarm_code = int(record.get("alarm_code") or 0)
         if alarm_code > 0:
             alarm_lbl = record.get("alarm_label", f"AL{alarm_code}")
             await self.send_webhook(
                 webhook_url,
-                "🚨 Alarme Poêle Nobis A10",
+                f"🚨 Alarme {stove_name}",
                 f"Alarme active détectée : {alarm_lbl} (Code {alarm_code})",
                 f"alarm_{alarm_code}",
                 mode,
@@ -96,11 +98,11 @@ class NotificationService:
 
         hopper_pct = float(record.get("pellet_hopper_pct") if record.get("pellet_hopper_pct") is not None else 100.0)
         if hopper_pct <= 20.0:
-            kg_left = round((hopper_pct / 100.0) * HOPPER_CAPACITY_KG, 1)
+            kg_left = round((hopper_pct / 100.0) * hopper_cap_kg, 1)
             await self.send_webhook(
                 webhook_url,
                 "🌾 Réserve Granulés Basse (< 20%)",
-                f"Trémie à {hopper_pct}% (~{kg_left} kg restants sur {int(HOPPER_CAPACITY_KG)} kg). Pensez à recharger.",
+                f"Trémie à {hopper_pct}% (~{kg_left} kg restants sur {int(hopper_cap_kg)} kg). Pensez à recharger.",
                 "low_hopper",
                 mode,
             )
@@ -111,7 +113,7 @@ class NotificationService:
         if cat_hours <= 50.0:
             await self.send_webhook(
                 webhook_url,
-                "🔧 Entretien CAT Nobis A10 Imminent",
+                f"🔧 Entretien CAT {stove_name} Imminent",
                 f"Il reste {int(cat_hours)} h avant l'échéance d'entretien programmé CAT.",
                 "cat_service",
                 mode,

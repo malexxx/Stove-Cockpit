@@ -74,3 +74,23 @@ class TestApiTokenAndCors(BugBountyTestCase):
                 self.client.get("/api/latest", headers={"Origin": "capacitor://localhost", "X-API-Key": new_tok}).status_code,
                 200,
             )
+
+    def test_cors_never_uses_wildcard_and_hardens_security_headers(self):
+        # Origine tierce non autorisée sur OPTIONS -> pas de Access-Control-Allow-Origin: *
+        r_opt_evil = self.client.options("/api/latest", headers={"Origin": "https://evil.example"})
+        self.assertEqual(r_opt_evil.status_code, 200)
+        self.assertIsNone(r_opt_evil.headers.get("access-control-allow-origin"))
+
+        # Pairing info & rotation jamais mis en cache
+        r_pair = self.client.get("/api/system/pairing-info")
+        self.assertEqual(r_pair.status_code, 200)
+        self.assertEqual(r_pair.headers.get("cache-control"), "no-store")
+
+        # Géolocalisation autorisée uniquement en same-origin
+        r_health = self.client.get("/health")
+        self.assertIn("geolocation=(self)", r_health.headers.get("permissions-policy", ""))
+
+        # Cache actif sur /css/styles.css servi depuis frontend/dist
+        r_css = self.client.get("/css/styles.css")
+        if r_css.status_code == 200:
+            self.assertIn("max-age=3600", r_css.headers.get("cache-control", ""))

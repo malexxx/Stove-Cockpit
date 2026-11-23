@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 import os
 import sqlite3
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import httpx
 from starlette.requests import Request

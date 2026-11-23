@@ -146,7 +146,7 @@ class MatterBridgeManager:
 
     def _build_bridge_env(self) -> tuple[dict[str, str], str, str]:
         settings = get_settings_dict()
-        device_name = (settings.get("matter_device_name") or "Poêle Nobis A10").strip()
+        device_name = (settings.get("matter_device_name") or settings.get("stove_name") or "Stove Cockpit").strip()
         matter_port = str(settings.get("matter_port") or "5540").strip()
         passcode, discriminator = _load_or_create_commissioning_params(regenerate=False)
         api_url, _ = _resolve_backend_api_connection()

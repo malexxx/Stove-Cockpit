@@ -1,3 +1,4 @@
+// Point d'entrée ES Module Vite/Capacitor : initialise ProviderManager et expose StoveCore.
 import { getAllBrands, getBrandPreset } from "./providers/agua_direct.js";
 import { ProviderManager } from "./providers/manager.js";
 import { decodeBufferToTelemetry, detectCapabilities, evaluateBuffer, parseRegistersMap } from "./micronova/register_engine.js";

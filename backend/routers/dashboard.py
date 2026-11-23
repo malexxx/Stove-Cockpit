@@ -10,7 +10,6 @@ import os
 import re
 import time
 from typing import Annotated
-from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
@@ -22,7 +21,6 @@ from database import (
     get_active_mode,
     get_db,
     get_public_settings_dict,
-    get_settings_dict,
     query_dashboard_series_range,
     read_registers_from_conn,
 )

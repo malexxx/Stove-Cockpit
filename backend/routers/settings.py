@@ -16,7 +16,7 @@ from clients import (
     notification_service,
     weather_service,
 )
-from config import APP_VERSION, BRANDS_CATALOG, MODE_DB_PATHS
+from config import APP_VERSION, BRANDS_CATALOG, MODE_DB_PATHS, get_hopper_capacity_kg
 from database import (
     db_log,
     encrypt_setting_value,
@@ -167,11 +167,14 @@ async def api_test_webhook(payload: TestWebhookPayload, request: Request):
     if not await asyncio.to_thread(is_safe_webhook_url, url):
         raise HTTPException(status_code=400, detail="URL de webhook invalide ou rejetée par le filtre de sécurité anti-SSRF.")
     active_mode = get_active_mode()
+    settings = get_settings_dict()
+    stove_label = (settings.get("stove_name") or "Stove Cockpit").strip()
+    hopper_cap = int(round(get_hopper_capacity_kg(settings)))
     notification_service._last_sent_by_key.pop("test_alert", None)
     ok = await notification_service.send_webhook(
         url,
-        "🔥 Test Superviseur Nobis A10",
-        "Connexion notifications Push/Webhook opérationnelle (Trémie 35 kg).",
+        f"🔥 Test {stove_label}",
+        f"Connexion notifications Push/Webhook opérationnelle (Trémie {hopper_cap} kg).",
         "test_alert",
         active_mode,
     )
@@ -280,7 +283,7 @@ async def _reverse_geocode_nominatim(client, lat: float, lon: float) -> str:
         r_nom = await client.get(
             "https://nominatim.openstreetmap.org/reverse",
             params={"format": "json", "lat": f"{lat:.5f}", "lon": f"{lon:.5f}", "zoom": 10, "addressdetails": 1},
-            headers={"User-Agent": f"Nobis.Supervisor/{APP_VERSION}"},
+            headers={"User-Agent": f"StoveCockpit/{APP_VERSION}"},
         )
         if r_nom.status_code != 200:
             return ""

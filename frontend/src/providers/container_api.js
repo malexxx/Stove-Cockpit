@@ -28,12 +28,15 @@ export class ContainerApiClient {
     const reqHeaders = { ...headers };
     if (tok) reqHeaders["X-API-Key"] = tok;
     const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
-    if (body !== undefined && !isFormData && !reqHeaders["Content-Type"]) {
+    const isBinary =
+      (typeof Blob !== "undefined" && body instanceof Blob) ||
+      (typeof ArrayBuffer !== "undefined" && (body instanceof ArrayBuffer || ArrayBuffer.isView(body)));
+    if (body !== undefined && !isFormData && !isBinary && !reqHeaders["Content-Type"]) {
       reqHeaders["Content-Type"] = "application/json";
     }
 
     const isNative = typeof Capacitor !== "undefined" && typeof Capacitor.isNativePlatform === "function" && Capacitor.isNativePlatform();
-    if (isNative && targetBase && !isFormData) {
+    if (isNative && targetBase && !isFormData && !isBinary) {
       const res = await CapacitorHttp.request({
         url,
         method,
@@ -55,7 +58,7 @@ export class ContainerApiClient {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const reqBody = body === undefined ? undefined : (isFormData || typeof body === "string" ? body : JSON.stringify(body));
+      const reqBody = body === undefined ? undefined : (isFormData || isBinary || typeof body === "string" ? body : JSON.stringify(body));
       return await fetch(url, {
         method,
         headers: reqHeaders,

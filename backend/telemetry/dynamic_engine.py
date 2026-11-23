@@ -155,88 +155,109 @@ def _is_register_enabled(key: str, evaluated: dict[str, dict[str, Any]]) -> bool
     return int(round(float(val))) == 1
 
 
+def _build_duct_entry(
+    duct_id: str,
+    label: str,
+    speed_set_key: str,
+    speed_get_key: str | None,
+    temp_set_key: str | None,
+    temp_get_key: str | None,
+    register_map: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    sp_meta = register_map.get(speed_set_key) or {}
+    t_meta = register_map.get(temp_set_key) if temp_set_key else {}
+    return {
+        "id": duct_id.upper(),
+        "label": label,
+        "speed_set_key": speed_set_key,
+        "speed_get_key": speed_get_key if speed_get_key in register_map else None,
+        "temp_set_key": temp_set_key if temp_set_key and temp_set_key in register_map else None,
+        "temp_get_key": temp_get_key if temp_get_key and temp_get_key in register_map else None,
+        "speed_min": int(sp_meta.get("set_min", 0)),
+        "speed_max": int(sp_meta.get("set_max", 8)),
+        "temp_min": float((t_meta or {}).get("set_min", 7.0)),
+        "temp_max": float((t_meta or {}).get("set_max", 41.0)),
+    }
+
+
+def _detect_canonical_ducts(
+    register_map: dict[str, dict[str, Any]],
+    evaluated: dict[str, dict[str, Any]],
+    ducts: list[dict[str, Any]],
+    seen_ids: set[str],
+) -> None:
+    """Détecte en priorité les canalisations canoniques gauche/droite (SX / DX)."""
+    sides = (
+        ("SX", "Canalisation Gauche", "duct_left_speed", "duct_left_actual", "duct_left_setpoint", "duct_left_temp"),
+        ("DX", "Canalisation Droite", "duct_right_speed", "duct_right_actual", "duct_right_setpoint", "duct_right_temp"),
+    )
+    for side, label, spd_alias, act_alias, tset_alias, tget_alias in sides:
+        spd_k = next((k for k in CANONICAL_ALIASES.get(spd_alias, []) if k in register_map), None)
+        if not spd_k or side in seen_ids or not _is_register_enabled(spd_k, evaluated):
+            continue
+        seen_ids.add(side)
+        ducts.append(
+            _build_duct_entry(
+                side,
+                label,
+                spd_k,
+                next((k for k in CANONICAL_ALIASES.get(act_alias, []) if k in register_map), None),
+                next((k for k in CANONICAL_ALIASES.get(tset_alias, []) if k in register_map), None),
+                next((k for k in CANONICAL_ALIASES.get(tget_alias, []) if k in register_map), None),
+                register_map,
+            )
+        )
+
+
+def _match_duct_pattern(reg_key: str) -> str | None:
+    for pat in _CANALIZATION_REGEXES:
+        m = pat.match(reg_key)
+        if m:
+            return m.group(1) if m.groups() else reg_key
+    return None
+
+
+def _detect_pattern_ducts(
+    register_map: dict[str, dict[str, Any]],
+    evaluated: dict[str, dict[str, Any]],
+    ducts: list[dict[str, Any]],
+    seen_ids: set[str],
+) -> None:
+    """Détecte les canalisations génériques multi-marques (multifire_1_set, sweetair_*, etc.)."""
+    existing_keys = {d["speed_set_key"] for d in ducts}
+    for rk in sorted(register_map.keys()):
+        if rk in existing_keys:
+            continue
+        raw_id = _match_duct_pattern(rk)
+        if not raw_id:
+            continue
+        norm = raw_id.upper()
+        norm = "SX" if norm in ("SX", "1") else ("DX" if norm in ("DX", "2", "REAR") else norm)
+        if norm in seen_ids or not _is_register_enabled(rk, evaluated):
+            continue
+        seen_ids.add(norm)
+        existing_keys.add(rk)
+        ducts.append(
+            _build_duct_entry(
+                norm,
+                f"Zone {raw_id.upper()}",
+                rk,
+                f"{rk.rsplit('_set', 1)[0]}_get",
+                f"canalization_{raw_id}_temp_air_set",
+                f"canalization_{raw_id}_temp_air_get",
+                register_map,
+            )
+        )
+
+
 def _detect_ducts(
     register_map: dict[str, dict[str, Any]],
     evaluated: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
     ducts: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
-
-    def _add_duct(duct_id: str, label: str, speed_set_key: str, speed_get_key: str | None, temp_set_key: str | None, temp_get_key: str | None):
-        norm_id = duct_id.upper()
-        if norm_id in seen_ids:
-            return
-        if not _is_register_enabled(speed_set_key, evaluated):
-            return
-        seen_ids.add(norm_id)
-        sp_meta = register_map.get(speed_set_key) or {}
-        t_meta = register_map.get(temp_set_key) if temp_set_key else {}
-        ducts.append({
-            "id": norm_id,
-            "label": label,
-            "speed_set_key": speed_set_key,
-            "speed_get_key": speed_get_key if speed_get_key in register_map else None,
-            "temp_set_key": temp_set_key if temp_set_key and temp_set_key in register_map else None,
-            "temp_get_key": temp_get_key if temp_get_key and temp_get_key in register_map else None,
-            "speed_min": int(sp_meta.get("set_min", 0)),
-            "speed_max": int(sp_meta.get("set_max", 8)),
-            "temp_min": float((t_meta or {}).get("set_min", 7.0)),
-            "temp_max": float((t_meta or {}).get("set_max", 41.0)),
-        })
-
-    # Priorité explicite aux clés SX/DX Nobis et génériques pour conserver l'ordre gauche/droite
-    for side, def_label, spd_cands, spd_get_cands, t_set_cands, t_get_cands in (
-        (
-            "SX",
-            "Canalisation Gauche",
-            CANONICAL_ALIASES.get("duct_left_speed", []),
-            CANONICAL_ALIASES.get("duct_left_actual", []),
-            CANONICAL_ALIASES.get("duct_left_setpoint", []),
-            CANONICAL_ALIASES.get("duct_left_temp", []),
-        ),
-        (
-            "DX",
-            "Canalisation Droite",
-            CANONICAL_ALIASES.get("duct_right_speed", []),
-            CANONICAL_ALIASES.get("duct_right_actual", []),
-            CANONICAL_ALIASES.get("duct_right_setpoint", []),
-            CANONICAL_ALIASES.get("duct_right_temp", []),
-        ),
-    ):
-        spd_k = next((k for k in spd_cands if k in register_map), None)
-        if spd_k:
-            _add_duct(
-                side,
-                def_label,
-                spd_k,
-                next((k for k in spd_get_cands if k in register_map), None),
-                next((k for k in t_set_cands if k in register_map), None),
-                next((k for k in t_get_cands if k in register_map), None),
-            )
-
-    # Détection générique pour d'autres marques (multifire_1_set, sweetair_1_set, canalization_3_set, etc.)
-    for rk in sorted(register_map.keys()):
-        if any(rk == d["speed_set_key"] for d in ducts):
-            continue
-        for pat in _CANALIZATION_REGEXES:
-            m = pat.match(rk)
-            if m:
-                raw_id = m.group(1) if m.groups() else rk
-                norm = raw_id.upper()
-                if norm in ("SX", "1"):
-                    norm = "SX"
-                elif norm in ("DX", "2", "REAR"):
-                    norm = "DX"
-                _add_duct(
-                    norm,
-                    f"Zone {raw_id.upper()}",
-                    rk,
-                    f"{rk.rsplit('_set', 1)[0]}_get",
-                    f"canalization_{raw_id}_temp_air_set",
-                    f"canalization_{raw_id}_temp_air_get",
-                )
-                break
-
+    _detect_canonical_ducts(register_map, evaluated, ducts, seen_ids)
+    _detect_pattern_ducts(register_map, evaluated, ducts, seen_ids)
     return ducts
 
 
@@ -364,30 +385,30 @@ def prepare_write_value(reg_meta: dict[str, Any] | None, value: float) -> int:
     return int_val
 
 
+_STATUS_KEYWORD_RULES: tuple[tuple[tuple[str, ...], int], ...] = (
+    (("ECO",), 8),
+    (("STAND",), 9),
+    (("COOL", "SPEGN", "ARRET", "ARRÊT"), 7),
+    (("CLEAN", "PULIZ", "NETTOY"), 6),
+    (("WORK", "LAVOR", "TRAVAIL"), 5),
+    (("IGNIT", "ACCENS", "ALLUM", "START"), 4),
+    (("LOAD", "CARIC"), 3),
+    (("PREHEAT", "RISCALD"), 2),
+    (("CHECK", "WAIT", "ATTEND"), 1),
+)
+
+
 def infer_normalized_status_code(status_desc: str | None, raw_status: int | None) -> int:
     """Normalise un code d'état Micronova hétérogène vers les phases cockpit (-1..11) si besoin."""
     if status_desc:
         up = status_desc.strip().upper()
         if "ALARM" in up or "ALLARM" in up:
             return 11 if ("MEM" in up) else 10
+        if up == "ON":
+            return 5
         if any(k in up for k in STATUS_OFF_KEYWORDS):
             return 0
-        if "ECO" in up:
-            return 8
-        if "STAND" in up:
-            return 9
-        if "COOL" in up or "SPEGN" in up or "ARRET" in up or "ARRÊT" in up:
-            return 7
-        if "CLEAN" in up or "PULIZ" in up or "NETTOY" in up:
-            return 6
-        if "WORK" in up or "LAVOR" in up or "TRAVAIL" in up or "ON" == up:
-            return 5
-        if "IGNIT" in up or "ACCENS" in up or "ALLUM" in up or "START" in up:
-            return 4
-        if "LOAD" in up or "CARIC" in up:
-            return 3
-        if "PREHEAT" in up or "RISCALD" in up:
-            return 2
-        if "CHECK" in up or "WAIT" in up or "ATTEND" in up:
-            return 1
+        for keywords, normalized in _STATUS_KEYWORD_RULES:
+            if any(k in up for k in keywords):
+                return normalized
     return int(raw_status) if raw_status is not None else 0

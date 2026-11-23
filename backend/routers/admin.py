@@ -5,7 +5,7 @@ import os
 from typing import Annotated
 
 from fastapi import APIRouter, Body, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 import httpx
 from pydantic import BaseModel, ConfigDict, StrictBool
 
@@ -66,7 +66,8 @@ async def api_system_storage():
 async def api_system_pairing_info(request: Request):
     """Retourne l'URL HTTP et le jeton API pour connecter l'application mobile (Option +)."""
     base_url = str(request.base_url).rstrip("/")
-    return await asyncio.to_thread(build_pairing_info, base_url)
+    payload = await asyncio.to_thread(build_pairing_info, base_url)
+    return JSONResponse(content=payload, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/system/pairing-token/rotate", responses={403: {"description": "Authentification installateur requise"}})
@@ -76,7 +77,7 @@ async def api_system_pairing_token_rotate(request: Request):
     new_tok = await asyncio.to_thread(rotate_api_token)
     active_mode = await asyncio.to_thread(get_active_mode)
     db_log("WARNING", "SECURITY", "Jeton API du conteneur compagnon régénéré.", active_mode)
-    return {"status": "ok", "api_token": new_tok}
+    return JSONResponse(content={"status": "ok", "api_token": new_tok}, headers={"Cache-Control": "no-store"})
 
 
 @router.get(
@@ -87,13 +88,13 @@ async def api_system_pairing_token_rotate(request: Request):
     },
 )
 async def api_system_backup_download(request: Request):
-    """Télécharge une sauvegarde ZIP atomique complète (bases SQLite, .secret.key, certificats TLS et Matter)."""
+    """Télécharge une sauvegarde ZIP atomique complète (bases SQLite, .secret.key et état Matter)."""
     require_installer_auth_if_configured(request)
     zip_bytes = await asyncio.to_thread(create_backup_zip_bytes)
     active_mode = await asyncio.to_thread(get_active_mode)
     db_log("INFO", "BACKUP", f"Export sauvegarde complète généré ({len(zip_bytes)} octets).", active_mode)
     add_container_log("INFO", "BACKUP", f"Export sauvegarde complète généré ({len(zip_bytes)} octets).")
-    filename = f"nobis_supervisor_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    filename = f"stove_cockpit_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
     return Response(
         content=zip_bytes,
         media_type="application/zip",
@@ -113,7 +114,7 @@ async def api_system_backup_download(request: Request):
     },
 )
 async def api_system_backup_restore(request: Request):
-    """Restaure atomiquement une sauvegarde ZIP validée dans DATA_DIR (bases SQLite, .secret.key, certs, Matter)."""
+    """Restaure atomiquement une sauvegarde ZIP validée dans DATA_DIR (bases SQLite, .secret.key, Matter)."""
     require_installer_auth_if_configured(request)
     body = await request.body()
     if len(body) > MAX_BACKUP_UPLOAD_BYTES:

@@ -171,7 +171,7 @@ def _apply_security_headers(request: Request, response: Response) -> None:
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(self)"
     response.headers["Content-Security-Policy"] = _CSP_POLICY
 
     token = _extract_api_token(request)
@@ -182,7 +182,7 @@ def _apply_security_headers(request: Request, response: Response) -> None:
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
         response.headers["Vary"] = "Origin"
 
-    if request.url.path.startswith(("/static/", "/assets/")):
+    if request.url.path.startswith(("/static/", "/assets/", "/css/", "/js/", "/vendor/", "/icons/")):
         if request.query_params.get("v") or request.url.path.startswith("/assets/"):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         else:
@@ -199,14 +199,15 @@ def _build_options_response(app: FastAPI, request: Request) -> Response | None:
         "Allow": allow_str,
         "Access-Control-Allow-Methods": allow_str,
         "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key, X-Installer-Token",
+        "Access-Control-Max-Age": "600",
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "SAMEORIGIN",
         "Referrer-Policy": "strict-origin-when-cross-origin",
-        "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=(self)",
     }
     origin = (request.headers.get("origin") or "").strip()
-    if origin and origin != "null":
-        headers["Access-Control-Allow-Origin"] = origin if _is_origin_allowed(origin) else "*"
+    if origin and _is_origin_allowed(origin):
+        headers["Access-Control-Allow-Origin"] = origin
         headers["Vary"] = "Origin"
     return Response(status_code=200, headers=headers)
 
@@ -220,7 +221,10 @@ async def _handle_global_exception(request: Request, exc: Exception) -> JSONResp
             status_code=422,
             content={"detail": [{"loc": ["body"], "msg": "Entier hors limites pour SQLite", "type": "overflow_error"}]},
         )
-    return JSONResponse(status_code=500, content={"detail": f"Erreur interne : {str(exc)}"})
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Erreur interne du serveur (consultez les journaux système)."},
+    )
 
 
 async def _handle_http_exception(request: Request, exc: HTTPException) -> JSONResponse:

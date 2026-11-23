@@ -224,6 +224,55 @@ def _persist_catalog_from_buffer(
         conn.close()
 
 
+def _apply_dynamic_status_and_alarm(
+    ev: dict[str, dict[str, Any]],
+    dyn_fn,
+    dyn_desc_fn,
+    state: int,
+    alarm_code: int,
+    alarm_label: str,
+    status_label: str,
+) -> tuple[int, int, str, str]:
+    """Enrichit état/alarme à partir du mapping dynamique si disponible."""
+    if not ev:
+        return state, alarm_code, alarm_label, status_label
+    dyn_status_raw = dyn_fn("status_get")
+    dyn_status_desc = dyn_desc_fn("status_get")
+    if dyn_status_raw is not None or dyn_status_desc:
+        raw_st = int(round(float(dyn_status_raw))) if dyn_status_raw is not None else state
+        state = infer_normalized_status_code(dyn_status_desc, raw_st)
+        if dyn_status_desc:
+            status_label = dyn_status_desc
+    dyn_alarm_raw = dyn_fn("alarms_get")
+    dyn_alarm_desc = dyn_desc_fn("alarms_get")
+    if dyn_alarm_raw is not None:
+        alarm_code = int(round(float(dyn_alarm_raw)))
+    if alarm_code > 0 and dyn_alarm_desc:
+        alarm_label = dyn_alarm_desc
+        status_label = f"{status_label} [{alarm_label}]"
+    return state, alarm_code, alarm_label, status_label
+
+
+def _resolve_primary_temperatures(
+    caps: dict[str, Any],
+    dyn_fn,
+    raw_buf: dict[int, float],
+    prev: dict[str, Any],
+    r_val: dict[str, float],
+) -> tuple[float, float]:
+    """Résout température principale et consigne (air ambiant ou eau chaudière Hydro)."""
+    if caps.get("stove_type") == "hydro":
+        dyn_temp = dyn_fn("temp_water_get")
+        dyn_sp = dyn_fn("temp_water_setpoint")
+    else:
+        dyn_temp = dyn_fn("temp_amb_get")
+        dyn_sp = dyn_fn("temp_amb_setpoint")
+    raw_amb = dyn_temp if dyn_temp is not None else (raw_buf.get(103) if 103 in raw_buf else raw_buf.get(1))
+    temp_amb = float(raw_amb if raw_amb is not None else (prev.get("temp_ambient") or 19.0))
+    sp_amb = float(dyn_sp if dyn_sp is not None else raw_buf.get(33122, r_val.get("temp_amb_setpoint", 19.0)))
+    return temp_amb, sp_amb
+
+
 def decode_hardware_buffer(
     raw_buf: dict[int, float],
     regs: dict[str, dict[str, Any]],
@@ -237,7 +286,7 @@ def decode_hardware_buffer(
     dt_hours: float,
     register_map: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Décode un buffer brut Agua Cloud / Passerelle UART via le moteur générique Micronova (et repli Nobis A10)."""
+    """Décode un buffer brut Agua Cloud / Passerelle UART via le moteur générique Micronova (et repli standard)."""
     _normalize_signed_and_sync_rval(raw_buf, regs, r_val)
     ev = evaluate_buffer(raw_buf, register_map) if register_map else {}
     caps = detect_capabilities(register_map or {}, ev, settings=settings)
@@ -246,64 +295,46 @@ def decode_hardware_buffer(
         if not ev:
             return fallback
         _, entry = resolve_canonical(canon, ev, register_map)
-        if entry and entry.get("value") is not None:
-            return entry["value"]
-        return fallback
+        return entry["value"] if (entry and entry.get("value") is not None) else fallback
 
     def _dyn_desc(canon: str) -> str | None:
         if not ev:
             return None
         _, entry = resolve_canonical(canon, ev, register_map)
-        if entry and entry.get("description"):
-            return str(entry["description"])
-        return None
+        return str(entry["description"]) if (entry and entry.get("description")) else None
 
     now_epoch = int(now.timestamp())
-    _comm_status["connected"] = True
-    _comm_status["last_sync_time"] = now_str
-    _comm_status["last_sync_epoch"] = now_epoch
-    _comm_status["last_error"] = None
-    _comm_status["comm_mode"] = comm_mode
+    _comm_status.update(
+        {
+            "connected": True,
+            "last_sync_time": now_str,
+            "last_sync_epoch": now_epoch,
+            "last_error": None,
+            "comm_mode": comm_mode,
+        }
+    )
     if prev.get("status_code") == -1:
         db_log("INFO", "COMMUNICATION", f"Communication avec le poêle rétablie avec succès ({comm_mode}).", comm_mode)
 
     state, status_managed, alarm_code, alarm_label, status_label = _resolve_state_and_alarms(raw_buf, prev, comm_mode)
-    if ev:
-        dyn_status_raw = _dyn("status_get")
-        dyn_status_desc = _dyn_desc("status_get")
-        if dyn_status_raw is not None or dyn_status_desc:
-            state = infer_normalized_status_code(dyn_status_desc, int(round(float(dyn_status_raw))) if dyn_status_raw is not None else state)
-            if dyn_status_desc:
-                status_label = dyn_status_desc
-        dyn_alarm_raw = _dyn("alarms_get")
-        dyn_alarm_desc = _dyn_desc("alarms_get")
-        if dyn_alarm_raw is not None:
-            alarm_code = int(round(float(dyn_alarm_raw)))
-        if alarm_code > 0 and dyn_alarm_desc:
-            alarm_label = dyn_alarm_desc
-            status_label = f"{status_label} [{alarm_label}]"
+    state, alarm_code, alarm_label, status_label = _apply_dynamic_status_and_alarm(
+        ev, _dyn, _dyn_desc, state, alarm_code, alarm_label, status_label
+    )
 
     blackout_popup = int(raw_buf.get(40, 0))
     popup_flags = int(raw_buf.get(115, 0))
     dyn_pellet_low = _dyn("pellet_reserve_low")
     popup_pellet_empty = 1 if ((popup_flags & 64) or (dyn_pellet_low is not None and int(round(float(dyn_pellet_low))) == 1)) else 0
 
-    if caps.get("stove_type") == "hydro":
-        dyn_temp_primary = _dyn("temp_water_get")
-        dyn_sp_primary = _dyn("temp_water_setpoint")
-    else:
-        dyn_temp_primary = _dyn("temp_amb_get")
-        dyn_sp_primary = _dyn("temp_amb_setpoint")
-
-    raw_amb = dyn_temp_primary if dyn_temp_primary is not None else (raw_buf.get(103) if 103 in raw_buf else raw_buf.get(1))
-    temp_amb = float(raw_amb if raw_amb is not None else (prev.get("temp_ambient") or 19.0))
+    temp_amb, temp_amb_sp = _resolve_primary_temperatures(caps, _dyn, raw_buf, prev, r_val)
     temp_fumes = float(_dyn("temp_fumes", raw_buf.get(2, prev.get("temp_fumes") or 25.0)))
     temp_probe_k = float(_dyn("temp_probe_k", raw_buf.get(0, prev.get("temp_probe_k") or 25.0)))
     dep_pa = float(_dyn("depression_pa", round(float(raw_buf.get(37, 0.0)) / 10.0, 1)))
 
     p_cmd = int(round(float(_dyn("power_level", raw_buf.get(33120, r_val.get("power_level", 4))))))
     p_actual = int(round(float(_dyn("real_power", raw_buf.get(11, p_cmd)))))
-    standby_en = 1 if (state in (8, 9)) else int(round(float(_dyn("standby_set", raw_buf.get(33130, r_val.get("standby_set", 0) if comm_mode == "simulation" else 0)))))
+    sb_fallback = r_val.get("standby_set", 0) if comm_mode == "simulation" else 0
+    standby_en = 1 if (state in (8, 9)) else int(round(float(_dyn("standby_set", raw_buf.get(33130, sb_fallback)))))
 
     t_flags = int(raw_buf.get(22, 0))
     stove_clock_str = format_stove_clock(
@@ -364,7 +395,7 @@ def decode_hardware_buffer(
         "popup_tcj_fault": 1 if (popup_flags & 2) else 0,
         "popup_tck_fault": 1 if (popup_flags & 1) else 0,
         "temp_ambient": temp_amb,
-        "temp_amb_setpoint": float(dyn_sp_primary if dyn_sp_primary is not None else raw_buf.get(33122, r_val.get("temp_amb_setpoint", 19.0))),
+        "temp_amb_setpoint": temp_amb_sp,
         "temp_fumes": temp_fumes,
         "temp_probe_k": temp_probe_k,
         "temp_board_ntc": None,

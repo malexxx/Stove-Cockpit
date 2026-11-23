@@ -471,7 +471,7 @@ function updateStatusIndicatorAndAlerts() {
   if (isCriticalAlarm) {
     if (dot) dot.className = "w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-sm sm:text-base bg-rose-600 text-white shadow-[0_0_12px_#f43f5e] animate-pulse flex-shrink-0 cursor-help border border-rose-300";
     if (kpiDot) kpiDot.className = "w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping shrink-0";
-    stateEl.className = "text-sm sm:text-base font-bold text-rose-400 leading-tight truncate";
+    if (stateEl) stateEl.className = "text-sm sm:text-base font-bold text-rose-400 leading-tight truncate";
     if (banner) {
       banner.className = "bg-rose-950/95 border-b border-rose-600 px-4 py-2.5 text-xs text-rose-100 flex flex-wrap items-center justify-between gap-2 animate-pulse";
     }
@@ -504,12 +504,14 @@ function updateStatusIndicatorAndAlerts() {
     if (blackout > 0) reasons.push("Coupure secteur détectée (AL01)");
 
     const baseText = reasons.length ? `ALERTE SÉCURITÉ : ${reasons.join(" • ")}` : "ALERTE SÉCURITÉ ACTIVE SUR LE POÊLE";
-    if (st === 10 && tf > 65) {
-      bannerText.textContent = `${baseText} • ⏳ Refroidissement en cours (${tf}°C, extracteur actif)`;
-    } else if (st === 11) {
-      bannerText.textContent = `${baseText} • ❄️ Poêle refroidi (Mémoire Alarme) : Réarmement P3 requis`;
-    } else {
-      bannerText.textContent = baseText;
+    if (bannerText) {
+      if (st === 10 && tf > 65) {
+        bannerText.textContent = `${baseText} • ⏳ Refroidissement en cours (${tf}°C, extracteur actif)`;
+      } else if (st === 11) {
+        bannerText.textContent = `${baseText} • ❄️ Poêle refroidi (Mémoire Alarme) : Réarmement P3 requis`;
+      } else {
+        bannerText.textContent = baseText;
+      }
     }
     if (bannerBtnText) bannerBtnText.textContent = customBtn;
   } else {
