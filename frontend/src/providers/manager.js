@@ -140,7 +140,7 @@ export class ProviderManager {
       decoded.latest.set_silece_set = 1;
     }
     const payload = {
-      version: "3.0.0",
+      version: "0.0.1",
       active_mode: this.mode,
       stove_name: decoded.latest.stove_name,
       capabilities: decoded.capabilities,

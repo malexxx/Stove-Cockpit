@@ -72,7 +72,7 @@ function applyDashboardState(data, updateSeries = true) {
 
   const dbEl = document.getElementById("hdr-db");
   if (dbEl) dbEl.textContent = activeDbFile;
-  const dockerVersion = data.docker_version || (currentSettings && currentSettings.docker_version) || "v3.0.0";
+  const dockerVersion = data.docker_version || (currentSettings && currentSettings.docker_version) || "v0.0.1";
   const cfgDockerVerEl = document.getElementById("cfg-docker-version");
   if (cfgDockerVerEl) cfgDockerVerEl.textContent = dockerVersion;
   const hdrDockerBadgeEl = document.getElementById("hdr-docker-version-badge");

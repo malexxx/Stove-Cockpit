@@ -125,7 +125,7 @@ def _resolve_docker_version(app_version: str) -> str:
     return env_dv
 
 
-APP_VERSION: str = _resolve_app_version("3.0.0")
+APP_VERSION: str = _resolve_app_version("0.0.1")
 DOCKER_VERSION: str = _resolve_docker_version(APP_VERSION)
 
 SYSTEM_DB_PATH = os.path.join(DATA_DIR, "nobis_a10_system.db")

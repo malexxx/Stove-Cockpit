@@ -43,7 +43,7 @@ jobs:
       - name: Compute Version Code
         id: ver
         run: |
-          echo "code=$((30000 + ${GITHUB_RUN_NUMBER:-1}))" >> "$GITHUB_OUTPUT"
+          echo "code=$((${GITHUB_RUN_NUMBER:-1}))" >> "$GITHUB_OUTPUT"
       - name: Build Signed Release AAB & APK
         if: steps.keystore.outputs.signed == 'true'
         working-directory: frontend/android

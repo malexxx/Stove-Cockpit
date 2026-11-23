@@ -237,7 +237,7 @@ function updateContainerConnectionIndicator(overrideStatus, message) {
   const cfgDiagContainer = document.getElementById("cfg-diag-container");
 
   const appMode = window.stoveProvider ? window.stoveProvider.getMode() : "container";
-  const dockerVer = (typeof currentSettings !== "undefined" && currentSettings && currentSettings.docker_version) || "v3.0.0";
+  const dockerVer = (typeof currentSettings !== "undefined" && currentSettings && currentSettings.docker_version) || "v0.0.1";
 
   if (appMode !== "container") {
     connectionState.containerStatus = "connected";
