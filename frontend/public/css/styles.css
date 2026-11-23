@@ -1,0 +1,417 @@
+body {
+  background-color: #0b0f19;
+  color: #e2e8f0;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.card {
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.45) 0%, rgba(17, 24, 39, 0.92) 100%);
+  backdrop-filter: blur(8px);
+  border: 1px solid #1f2937;
+  border-radius: 0.75rem;
+}
+
+.tab-active {
+  border-bottom: 2px solid #f97316;
+  color: #f97316;
+  font-weight: 600;
+}
+
+.mob-tab-active {
+  color: #f97316 !important;
+  font-weight: 700;
+}
+
+.tip {
+  cursor: help;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 9999px;
+  background: #1e293b;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 4px;
+  border: 1px solid #334155;
+}
+
+.tip:hover {
+  background: #f97316;
+  color: #ffffff;
+  border-color: #fb923c;
+}
+
+.btn-active-glow {
+  background-color: #ea580c !important;
+  color: #ffffff !important;
+  border: 1px solid #fdba74 !important;
+  box-shadow: 0 0 12px rgba(249, 115, 22, 0.55);
+}
+
+/* Double-état Consigne (Anneau) vs Réel (Plein coloré) */
+.btn-setpoint-ring {
+  box-shadow: 0 0 0 2px #ffffff, 0 0 8px rgba(255, 255, 255, 0.6) !important;
+  font-weight: 800 !important;
+  z-index: 10 !important;
+}
+
+.btn-actual-fill-amber {
+  background-color: #d97706 !important;
+  color: #ffffff !important;
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.45);
+}
+
+.btn-actual-fill-emerald {
+  background-color: #059669 !important;
+  color: #ffffff !important;
+  border-color: #10b981 !important;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.45);
+}
+
+.btn-actual-fill-cyan {
+  background-color: #0891b2 !important;
+  color: #ffffff !important;
+  border-color: #06b6d4 !important;
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.45);
+}
+
+.btn-actual-fill-sky {
+  background-color: #0284c7 !important;
+  color: #ffffff !important;
+  border-color: #0ea5e9 !important;
+  box-shadow: 0 0 10px rgba(14, 165, 233, 0.45);
+}
+
+.btn-actual-fill-rose {
+  background-color: #e11d48 !important;
+  color: #ffffff !important;
+  border-color: #f43f5e !important;
+  box-shadow: 0 0 12px rgba(244, 63, 94, 0.55);
+}
+
+/* Sliders ergonomiques tactiles */
+input[type="range"] {
+  height: 8px;
+  border-radius: 999px;
+  background: #1e293b;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+/* Gros curseurs tactiles ergonomiques pour Ventilation et Puissance */
+.chunky-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 14px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #1e293b 0%, #334155 100%);
+  border: 1px solid #475569;
+  outline: none;
+  cursor: pointer;
+  touch-action: pan-y;
+  transition: all 0.2s ease;
+}
+
+.chunky-slider:hover, .chunky-slider:focus-visible {
+  border-color: #94a3b8;
+}
+
+.chunky-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 3px solid #0f172a;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.3);
+  cursor: grab;
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease;
+}
+
+.chunky-slider::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  transform: scale(1.18);
+  box-shadow: 0 0 16px rgba(249, 115, 22, 0.7), 0 0 0 2px #f97316;
+}
+
+.chunky-slider::-moz-range-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 3px solid #0f172a;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7);
+  cursor: grab;
+}
+
+.chunky-slider::-moz-range-thumb:active {
+  cursor: grabbing;
+  transform: scale(1.18);
+}
+
+/* Boutons actifs d'extrême température */
+.btn-active-frost {
+  background-color: #0284c7 !important;
+  color: #ffffff !important;
+  border-color: #38bdf8 !important;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.65) !important;
+}
+
+
+/* Fleur du Cycle de Vie (11 pétales #1..#11 + bouton central ON/OFF/RESET) */
+.flower-petal-group {
+  cursor: pointer;
+  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.25s ease;
+}
+
+.flower-petal-path {
+  transition: fill 0.3s ease, stroke 0.3s ease, stroke-width 0.2s ease, opacity 0.3s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .flower-petal-group:hover .flower-petal-path {
+    stroke-width: 2.2px;
+    filter: brightness(1.3);
+  }
+  .mode-ring-btn:hover path {
+    filter: brightness(1.28);
+  }
+}
+
+.mode-ring-btn {
+  cursor: pointer;
+  outline: none;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.mode-ring-btn path {
+  transition: fill 0.25s ease, stroke 0.25s ease, stroke-width 0.2s ease, filter 0.25s ease;
+  stroke-linejoin: round;
+}
+
+.mode-ring-btn:active {
+  transform: scale(0.985);
+}
+
+@keyframes petalPulseGlow {
+  0%, 100% {
+    filter: drop-shadow(0 0 6px var(--petal-glow, #10b981));
+  }
+  50% {
+    filter: drop-shadow(0 0 13px var(--petal-glow, #10b981));
+  }
+}
+
+.flower-petal-active {
+  animation: petalPulseGlow 2.2s infinite ease-in-out;
+}
+
+/* ========================================================================== */
+/* NAVIGATION SMARTPHONE : 1 CARTE À LA FOIS AVEC SNAP SCROLL VERTICAL        */
+/* ========================================================================== */
+@media (max-width: 767px) {
+  .mobile-card-pager {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 1.25rem !important;
+    height: calc(100dvh - 122px) !important;
+    overflow-y: auto !important;
+    scroll-snap-type: y mandatory !important;
+    scroll-behavior: smooth !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 3.8rem !important;
+  }
+
+  .mobile-card-pager > .card {
+    flex: 0 0 calc(100dvh - 136px) !important;
+    height: calc(100dvh - 136px) !important;
+    min-height: calc(100dvh - 136px) !important;
+    max-height: calc(100dvh - 136px) !important;
+    scroll-snap-align: start !important;
+    scroll-snap-stop: always !important;
+    overflow-y: auto !important;
+    border-radius: 1rem !important;
+    margin-bottom: 0 !important;
+  }
+}
+
+/* Modales & Animations */
+@keyframes fadeInModal {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-in {
+  animation: fadeInModal 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Filtres de logs actifs */
+.log-filter-btn {
+  transition: all 0.15s ease-in-out;
+}
+.log-filter-btn.active {
+  outline: 2px solid #f97316 !important;
+  outline-offset: 1px;
+  font-weight: 800 !important;
+  box-shadow: 0 0 10px rgba(249, 115, 22, 0.5) !important;
+}
+
+/* ========================================================================== */
+/* CARROUSEL TRI-ARC (SWIPE HORIZONTAL SX ⇄ POÊLE ⇄ DX)                       */
+/* ========================================================================== */
+.triarc-carousel-viewport {
+  overflow: hidden !important;
+  width: 100% !important;
+  position: relative !important;
+  touch-action: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  overscroll-behavior: none !important;
+}
+
+#tab-control {
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+/* ========================================================================== */
+/* GESTION NAVIGATION & MASQUAGE DES ONGLETS (DESKTOP & MOBILE)               */
+/* ========================================================================== */
+/* Masquage strict des sections d'onglets inactives uniquement (sans impacter les classes utilitaires responsive comme hidden md:flex) */
+#tab-control.hidden,
+#tab-pellets.hidden,
+#tab-chrono.hidden,
+#tab-dashboard.hidden,
+#tab-installer.hidden {
+  display: none !important;
+}
+
+/* Garantie d'affichage de la barre d'onglets desktop sur grand écran */
+@media (min-width: 768px) {
+  nav.md\:flex {
+    display: flex !important;
+  }
+}
+
+@media (max-width: 767px) {
+  body {
+    min-height: 100dvh !important;
+    padding-bottom: 0 !important;
+  }
+
+  main {
+    padding-bottom: calc(4.25rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  #tab-pellets {
+    padding-bottom: 0 !important;
+    overflow-x: clip;
+  }
+
+  #tab-chrono,
+  #tab-dashboard,
+  #tab-installer {
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  #toast-box {
+    bottom: calc(4.75rem + env(safe-area-inset-bottom, 12px)) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  #tab-control:not(.hidden) {
+    overflow-y: hidden;
+    height: calc(100dvh - 128px - env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - 128px - env(safe-area-inset-bottom, 0px));
+    display: flex;
+    flex-direction: column;
+  }
+  #tab-control.hidden {
+    display: none !important;
+  }
+  #triarc-cockpit-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .triarc-carousel-viewport {
+    flex: 1 1 0%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .triarc-carousel-track {
+    height: 100%;
+    flex: 1 1 0%;
+    min-height: 0;
+  }
+  .triarc-carousel-slide {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+}
+
+.triarc-carousel-track {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  width: 100% !important;
+  transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  will-change: transform !important;
+}
+
+.triarc-carousel-slide {
+  width: 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
+  flex: 0 0 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* ========================================================================== */
+/* STYLES DU MENU PARAMÈTRES & OBSERVABILITÉ (SOUS-ONGLETS & CONSOLE LOGS)     */
+/* ========================================================================== */
+.subtab-installer-btn {
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.subtab-installer-btn.subtab-active {
+  background: #ea580c !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 10px rgba(234, 88, 12, 0.45) !important;
+}
+
+#logs-container::-webkit-scrollbar {
+  width: 6px;
+}
+#logs-container::-webkit-scrollbar-track {
+  background: #090d16;
+}
+#logs-container::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 9999px;
+}
+#logs-container::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}

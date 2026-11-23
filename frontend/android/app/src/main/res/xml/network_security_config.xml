@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Autorise HTTP LAN uniquement pour le conteneur compagnon (« Mode + ») -->
+    <base-config cleartextTrafficPermitted="true" />
+    <!-- Force HTTPS strict vers les Clouds fabricants et APIs Météo/Géo -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">agua-iot.com</domain>
+        <domain includeSubdomains="true">remote.mcz.it</domain>
+        <domain includeSubdomains="true">app2cloud.it</domain>
+        <domain includeSubdomains="true">open-meteo.com</domain>
+        <domain includeSubdomains="true">nominatim.openstreetmap.org</domain>
+    </domain-config>
+</network-security-config>

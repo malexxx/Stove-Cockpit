@@ -1,0 +1,462 @@
+    <!-- =================================================================== -->
+    <!-- ONGLET 3 : SUPERVISION (4 VOLETS ALIGNÉS AU PIXEL PRÈS + TACTILE)   -->
+    <!-- =================================================================== -->
+    <section id="tab-dashboard" class="hidden space-y-4 pb-8 md:pb-0">
+      <div class="card p-4 sm:p-5 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-4 border-b border-gray-800 pb-3">
+          <div>
+            <h2 class="text-base font-bold text-white flex items-center cursor-help"
+              title="Volet 1 : Thermique, Canalisations & Fumées. Volet 2 : Combustion, Puissance, Ventilation, RPM & Granulés. Volet 3 : Rubans booléens (Phases & Modes). Volet 4 : Sécurités, Sondes (TCK/TCJ) & Contacts historisés.">
+              Cockpit de Supervision à 4 Volets Synchronisés
+            </h2>
+            <p class="text-xs text-gray-400">Analyse temporelle synchronisée des courbes thermiques, mécaniques, des
+              modes actifs et de l'historique des sécurités & contacts</p>
+          </div>
+          <!-- Timeline (3h, 6h, 24h, 7j, 30j, 3M) + Export CSV Complet -->
+          <div class="flex flex-wrap items-center gap-2">
+            <div class="inline-flex rounded-lg bg-gray-800 p-1 border border-gray-700" id="timeline-btns">
+              <button onclick="setRange('3h')" data-range="3h"
+                class="px-2.5 sm:px-3 py-1 text-xs rounded text-gray-300">3h</button>
+              <button onclick="setRange('6h')" data-range="6h"
+                class="px-2.5 sm:px-3 py-1 text-xs rounded text-gray-300">6h</button>
+              <button onclick="setRange('24h')" data-range="24h"
+                class="px-2.5 sm:px-3 py-1 text-xs rounded bg-orange-600 text-white font-semibold">24h</button>
+              <button onclick="setRange('7j')" data-range="7j"
+                class="px-2.5 sm:px-3 py-1 text-xs rounded text-gray-300">7j</button>
+              <button onclick="setRange('30j')" data-range="30j"
+                class="px-2.5 sm:px-3 py-1 text-xs rounded text-gray-300">30j</button>
+              <button onclick="setRange('3M')" data-range="3M"
+                class="px-2.5 sm:px-3 py-1 text-xs rounded text-gray-300">3M</button>
+            </div>
+            <button onclick="exportCSV()"
+              class="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white border border-emerald-500 transition"
+              title="Exporte toutes les courbes + l'intégralité des registres et offsets bruts au format CSV Excel FR">
+              📥 Export CSV
+            </button>
+          </div>
+        </div>
+
+        <!-- BOUTON ACCORDÉON SUR MOBILE POUR LES FILTRES DE COURBES -->
+        <div class="sm:hidden">
+          <button onclick="toggleMobileSeriesDrawer()"
+            class="w-full py-2 px-3 rounded-lg bg-gray-800 border border-gray-700 text-xs font-semibold text-gray-200 flex items-center justify-between">
+            <span id="mob-series-drawer-label">🎛️ Filtrer les courbes & Présélections</span>
+            <span id="mob-series-drawer-icon">▼</span>
+          </button>
+        </div>
+
+        <!-- TIROIR PRÉSÉLECTIONS & BADGES DE SÉRIES (Replié sur mobile, ouvert sur PC) -->
+        <div id="series-filter-drawer" class="hidden sm:block space-y-2.5">
+          <div class="flex flex-wrap items-center gap-1.5 text-xs">
+            <span class="text-gray-400 font-medium mr-1">Présélections :</span>
+            <button onclick="applyPreset('ALL')"
+              class="px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700">Tout afficher</button>
+            <button onclick="applyPreset('THERMAL')"
+              class="px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700">Thermique</button>
+            <button onclick="applyPreset('DUCTS')"
+              class="px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700">Canalisations
+              (G/D)</button>
+            <button onclick="applyPreset('COMBUSTION')"
+              class="px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700">Combustion & Sonde
+              K</button>
+            <button onclick="applyPreset('SAFETY')"
+              class="px-2.5 py-1 rounded bg-rose-950/60 hover:bg-rose-900 border border-rose-700 text-rose-300 font-semibold">🛡️
+              Sécurités & Sondes</button>
+            <button onclick="applyPreset('MECHANICAL')"
+              class="px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700">Mécanique</button>
+            <button onclick="applyPreset('CONTROL')"
+              class="px-2.5 py-1 rounded bg-amber-950/60 hover:bg-amber-900 border border-amber-700 text-amber-300 font-semibold">🎛️
+              Consignes</button>
+            <button onclick="applyPreset('TRIM')"
+              class="px-2.5 py-1 rounded bg-purple-950/60 hover:bg-purple-900 border border-purple-700 text-purple-300 font-semibold">⚖️
+              Tarages</button>
+            <button onclick="applyPreset('PELLETS')"
+              class="px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700">Granulés</button>
+            <button onclick="applyPreset('NONE')"
+              class="px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 border border-red-900/60 text-red-300">Tout
+              masquer</button>
+          </div>
+          <div id="series-toggles" class="flex flex-wrap gap-1.5 pt-1"></div>
+        </div>
+
+        <!-- =============================================================== -->
+        <!-- SÉLECTEUR DE COUCHES VISUELLES DES PHASES DU POÊLE (1, 2, 3, 4) -->
+        <!-- =============================================================== -->
+        <div class="bg-gray-900/90 border border-gray-800 rounded-xl p-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="text-xs font-bold text-orange-300 flex items-center gap-1.5">
+              <span>🔥 Affichage des Phases du Poêle (0 à 11) :</span>
+              <span class="text-[11px] font-normal text-gray-400">Activez ou superposez librement les vues 1 à 4</span>
+            </div>
+            <div class="flex flex-wrap gap-1.5" id="phase-prop-tabs">
+              <button onclick="togglePhaseView('prop1')" data-prop="prop1"
+                class="px-3 py-1.5 rounded-lg text-xs font-bold border transition flex items-center gap-1.5 bg-orange-600 border-orange-400 text-white shadow">
+                <span class="prop-check">●</span>
+                <span>1️⃣ Ruban Maître + Durées</span>
+              </button>
+              <button onclick="togglePhaseView('prop2')" data-prop="prop2"
+                class="px-3 py-1.5 rounded-lg text-xs font-bold border transition flex items-center gap-1.5 bg-orange-600 border-orange-400 text-white shadow">
+                <span class="prop-check">●</span>
+                <span>2️⃣ Fond Coloré Courbes</span>
+              </button>
+              <button onclick="togglePhaseView('prop3')" data-prop="prop3"
+                class="px-3 py-1.5 rounded-lg text-xs font-bold border transition flex items-center gap-1.5 bg-orange-600 border-orange-400 text-white shadow">
+                <span class="prop-check">●</span>
+                <span>3️⃣ Focus & Badge Survol</span>
+              </button>
+              <button onclick="togglePhaseView('prop4')" data-prop="prop4"
+                class="px-3 py-1.5 rounded-lg text-xs font-bold border transition flex items-center gap-1.5 bg-orange-600 border-orange-400 text-white shadow">
+                <span class="prop-check">●</span>
+                <span>4️⃣ Stepper Cycle & Transitions</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- =============================================================== -->
+        <!-- BLOC PROPOSITION 4 : STEPPER VISUEL DU CYCLE & TRANSITIONS      -->
+        <!-- =============================================================== -->
+        <div id="phase-prop4-container" class="hidden bg-gray-950/90 border border-gray-800 rounded-xl p-3.5 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-800/80 pb-2">
+            <div class="text-xs font-bold text-white flex items-center gap-2">
+              <span>🧭 Cycle de Vie Micronova (États #0 à #11)</span>
+              <span id="prop4-mode-indicator"
+                class="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-800">
+                Temps réel
+              </span>
+            </div>
+            <span class="text-[11px] text-gray-400">Survolez les courbes pour voir le stepper s'animer à l'instant
+              T</span>
+          </div>
+          <!-- Stepper Horizontal 6 étapes -->
+          <div id="prop4-stepper-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2"></div>
+          <!-- Journal compact des dernières transitions de phases sur la période -->
+          <div class="pt-1 border-t border-gray-800/70">
+            <div class="text-[10px] text-gray-400 font-semibold mb-1.5">⏱️ Chronologie des transitions de phases sur la
+              période :</div>
+            <div id="prop4-transitions-list"
+              class="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] tabular-nums"></div>
+          </div>
+        </div>
+
+        <!-- =============================================================== -->
+        <!-- BLOC PROPOSITION 2 : CONTRÔLE DU FOND COLORÉ DES COURBES        -->
+        <!-- =============================================================== -->
+        <div id="phase-prop2-toolbar"
+          class="hidden bg-gray-950/90 border border-amber-800/50 rounded-xl px-3.5 py-2 text-xs flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="font-bold text-amber-300">🎨 Légende Fond des Courbes :</span>
+            <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-semibold">⚫ 0 Éteint</span>
+            <span
+              class="px-2 py-0.5 rounded bg-amber-950 border border-amber-500/60 text-amber-300 text-[10px] font-semibold">🟡
+              1-4 Allumage</span>
+            <span
+              class="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-500/60 text-emerald-300 text-[10px] font-semibold">🟢
+              5 Travail</span>
+            <span
+              class="px-2 py-0.5 rounded bg-purple-950 border border-purple-500/60 text-purple-300 text-[10px] font-semibold">🟣
+              6 Nettoyage</span>
+            <span
+              class="px-2 py-0.5 rounded bg-sky-950 border border-sky-500/60 text-sky-300 text-[10px] font-semibold">💨
+              7 Refroid.</span>
+            <span
+              class="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-500/60 text-cyan-300 text-[10px] font-semibold">❄️
+              8-9 Eco-Stop</span>
+            <span
+              class="px-2 py-0.5 rounded bg-rose-950 border border-rose-500/60 text-rose-300 text-[10px] font-semibold">🚨
+              10-11 Alarme</span>
+          </div>
+          <div class="flex items-center gap-1.5 text-[11px]">
+            <span class="text-gray-400">Intensité du fond :</span>
+            <button onclick="setPhaseBgOpacity(0.06)" data-op="0.06"
+              class="prop2-op-btn px-2 py-0.5 rounded bg-gray-800 text-gray-300 border border-gray-700">Doux
+              (6%)</button>
+            <button onclick="setPhaseBgOpacity(0.12)" data-op="0.12"
+              class="prop2-op-btn px-2 py-0.5 rounded bg-amber-600 text-white font-bold border border-amber-400">Normal
+              (12%)</button>
+            <button onclick="setPhaseBgOpacity(0.22)" data-op="0.22"
+              class="prop2-op-btn px-2 py-0.5 rounded bg-gray-800 text-gray-300 border border-gray-700">Marqué
+              (22%)</button>
+          </div>
+        </div>
+
+        <!-- BARRE DE LECTURE SYNCHRONISÉE AU SURVOL / GLISSEMENT TACTILE -->
+        <div id="sync-hover-bar"
+          class="bg-gray-950/90 border border-gray-800 rounded-lg px-3 py-1.5 text-[11px] flex flex-wrap items-center justify-between gap-2 tabular-nums">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-gray-400">Pointeur : <strong id="hover-timestamp" class="text-sky-400 font-mono">Temps
+                réel
+                (Dernier point)</strong></span>
+            <!-- Badge de phase dynamique (Proposition 3) -->
+            <span id="hover-phase-badge"
+              class="hidden px-2.5 py-0.5 rounded-full text-[11px] font-bold border transition-all">--</span>
+          </div>
+          <div id="hover-values-summary" class="flex flex-wrap items-center gap-3 text-gray-300"></div>
+        </div>
+
+        <!-- =============================================================== -->
+        <!-- BLOC PROPOSITION 3 : CARTE FOCUS DÉTAILLÉE AU SURVOL            -->
+        <!-- =============================================================== -->
+        <div id="phase-prop3-inspector"
+          class="hidden bg-gray-950/95 border border-gray-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-start sm:items-center gap-3">
+            <div id="prop3-phase-icon"
+              class="w-10 h-10 rounded-xl bg-gray-900 border border-gray-700 flex items-center justify-center text-xl shrink-0">
+              🟢
+            </div>
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <span id="prop3-phase-title" class="text-sm font-black text-white">Phase #5 — TRAVAIL (Normal)</span>
+                <span id="prop3-segment-duration"
+                  class="text-[11px] font-mono px-2 py-0.5 rounded bg-gray-900 border border-gray-700 text-sky-300">
+                  Durée de cette phase : --
+                </span>
+              </div>
+              <p id="prop3-phase-desc" class="text-xs text-gray-400 mt-0.5">
+                Régime nominal stabilisé : Modulation de puissance P1..P7 et soufflerie active.
+              </p>
+            </div>
+          </div>
+          <div id="prop3-phase-metrics" class="grid grid-cols-3 gap-2 text-[11px] tabular-nums shrink-0">
+            <div class="bg-gray-900/90 border border-gray-800 rounded-lg px-2.5 py-1 text-center">
+              <span class="text-[10px] text-gray-400 block">Bougie</span>
+              <strong id="prop3-m-glow" class="text-gray-200">--</strong>
+            </div>
+            <div class="bg-gray-900/90 border border-gray-800 rounded-lg px-2.5 py-1 text-center">
+              <span class="text-[10px] text-gray-400 block">Vis sans fin</span>
+              <strong id="prop3-m-auger" class="text-lime-300">--</strong>
+            </div>
+            <div class="bg-gray-900/90 border border-gray-800 rounded-lg px-2.5 py-1 text-center">
+              <span class="text-[10px] text-gray-400 block">Puiss. Réelle</span>
+              <strong id="prop3-m-pwr" class="text-amber-300">--</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- =============================================================== -->
+        <!-- CONTENEUR DES 3 VOLETS SYNCHRONISÉS (SUPPORT SOURIS & TOUCHMOVE)-->
+        <!-- =============================================================== -->
+        <div id="three-panes-container" class="space-y-3 select-none">
+
+          <!-- VOLET 1 : THERMIQUE, CANALISATIONS, CONSIGNES & FUMÉES -->
+          <div class="bg-gray-950/70 border border-gray-800/90 rounded-xl p-2">
+            <div
+              class="h-6 px-2 flex items-center justify-between text-[11px] font-semibold border-b border-gray-800/70 mb-1">
+              <span class="text-emerald-400 truncate">🌡️ Volet 1 — Températures Salon, Canalisations SX/DX & Consignes
+                (°C)</span>
+              <span class="text-orange-400 truncate ml-2">🔥 Fumées & Sonde K (°C)</span>
+            </div>
+            <div class="relative h-[220px] sm:h-[260px] w-full">
+              <canvas id="chartPane1"></canvas>
+            </div>
+          </div>
+
+          <!-- VOLET 2 : PUISSANCE, VENTILATION, DÉPRESSION, GRANULÉS & EXTRACTEUR RPM -->
+          <div class="bg-gray-950/70 border border-gray-800/90 rounded-xl p-2">
+            <div
+              class="h-6 px-2 flex items-center justify-between text-[11px] font-semibold border-b border-gray-800/70 mb-1">
+              <span class="text-amber-400 truncate">⚙️ Volet 2 — Puissance (P), Vitesses (/8), Dépression (Pa), Trémie
+                (%) & Tarages</span>
+              <span class="text-purple-400 truncate ml-2">🌀 Extracteur Fumées (RPM)</span>
+            </div>
+            <div class="relative h-[190px] sm:h-[220px] w-full">
+              <canvas id="chartPane2"></canvas>
+            </div>
+          </div>
+
+          <!-- VOLET 3 : RUBANS BOOLÉENS D'ÉTAT ALIGNÉS AU PIXEL PRÈS (60 FPS) -->
+          <div class="bg-gray-950/70 border border-gray-800/90 rounded-xl p-2">
+            <div
+              class="h-6 px-2 flex items-center justify-between text-[11px] font-semibold border-b border-gray-800/70 mb-1.5">
+              <span class="text-teal-400">🎗️ Volet 3 — Chronologie des Phases & Modes Actifs (Auto, Confort Climat,
+                Powerful, Silence)</span>
+              <span class="text-gray-400 text-[10px] font-mono" id="ribbon-hover-state">Survolez ou glissez le
+                doigt</span>
+            </div>
+            <!-- Marges pl/pr strictement identiques à axis.width de Chart.js (42px mobile, 64px PC) -->
+            <div class="px-[42px] sm:px-[64px]">
+              <div id="ribbons-plot-area" class="relative space-y-1.5 py-1 cursor-crosshair">
+                <!-- PROPOSITION 1 : RUBAN MAÎTRE DES PHASES DU POÊLE (0..11) -->
+                <div id="ribbon-row-phase"
+                  class="relative h-7 rounded-md bg-gray-900 border border-gray-700 overflow-hidden shadow-inner">
+                  <div id="ribbon-track-phase" class="w-full h-full flex"></div>
+                  <div
+                    class="absolute inset-y-0 left-2 flex items-center text-[11px] font-extrabold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] pointer-events-none bg-gray-950/65 px-2 my-1 rounded">
+                    🔥 Phase Poêle (`#8`) : <span id="ribbon-val-phase" class="ml-1.5 text-emerald-300">--</span>
+                  </div>
+                </div>
+
+                <!-- Ruban 1 : Modulation Automatique -->
+                <div class="relative h-5 rounded bg-gray-900 border border-gray-800 overflow-hidden">
+                  <div id="ribbon-track-auto" class="w-full h-full flex"></div>
+                  <div
+                    class="absolute inset-y-0 left-2 flex items-center text-[10px] font-bold text-white drop-shadow pointer-events-none">
+                    🔄 Modulation Automatique (`33128`) : <span id="ribbon-val-auto"
+                      class="ml-1 text-teal-300">--</span>
+                  </div>
+                </div>
+
+                <!-- Ruban 2 : Mode ECO (Stand-by / Éco-Stop) -->
+                <div class="relative h-5 rounded bg-gray-900 border border-gray-800 overflow-hidden">
+                  <div id="ribbon-track-clim" class="w-full h-full flex"></div>
+                  <div
+                    class="absolute inset-y-0 left-2 flex items-center text-[10px] font-bold text-white drop-shadow pointer-events-none">
+                    🌱 ECO (Stand-by) : <span id="ribbon-val-clim" class="ml-1 text-cyan-300">--</span>
+                  </div>
+                </div>
+
+                <!-- Ruban 3 : Mode BOOST -->
+                <div class="relative h-5 rounded bg-gray-900 border border-gray-800 overflow-hidden">
+                  <div id="ribbon-track-pwf" class="w-full h-full flex"></div>
+                  <div
+                    class="absolute inset-y-0 left-2 flex items-center text-[10px] font-bold text-white drop-shadow pointer-events-none">
+                    ⚡ BOOST (`33154`) : <span id="ribbon-val-pwf" class="ml-1 text-orange-300">--</span>
+                  </div>
+                </div>
+
+                <!-- Ruban 4 : Mode Silencieux logiciel (registre EEPROM #33250 inactif sur Nobis A10, #107 bit 2048 = 0) -->
+                <div class="relative h-5 rounded bg-gray-900 border border-gray-800 overflow-hidden">
+                  <div id="ribbon-track-sil" class="w-full h-full flex"></div>
+                  <div
+                    class="absolute inset-y-0 left-2 flex items-center text-[10px] font-bold text-white drop-shadow pointer-events-none">
+                    🤫 Silence ! (Auto app) : <span id="ribbon-val-sil" class="ml-1 text-purple-300">--</span>
+                  </div>
+                </div>
+
+                <!-- Unique ligne verticale curseur 60 FPS en superposition absolue (0 recalcul DOM) -->
+                <div id="ribbons-cursor-line"
+                  class="hidden absolute top-0 bottom-0 !m-0 w-[1.5px] bg-white/90 z-30 pointer-events-none shadow-[0_0_6px_#fff]">
+                </div>
+              </div>
+            </div>
+
+            <!-- PROPOSITION 1 (SUITE) : BILAN DES DURÉES & RÉPARTITION PAR PHASE SUR LA PÉRIODE -->
+            <div id="prop1-summary-footer" class="mt-2 pt-2 border-t border-gray-800/80 px-2 space-y-2">
+              <div class="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                <span class="text-gray-400 font-semibold">📊 Répartition des phases sur la période affichée :</span>
+                <span id="prop1-total-span" class="text-[10px] text-gray-500 font-mono">--</span>
+              </div>
+              <!-- Barre globale de répartition 100% -->
+              <div id="prop1-distribution-bar"
+                class="w-full h-2.5 rounded-full bg-gray-900 overflow-hidden flex border border-gray-800"></div>
+              <!-- Badges de durée par phase -->
+              <div id="prop1-duration-badges" class="flex flex-wrap gap-1.5 text-[11px] tabular-nums"></div>
+            </div>
+          </div>
+
+          <!-- =============================================================== -->
+          <!-- VOLET 4 : SÉCURITÉS, SONDES (TCK/TCJ) & CONTACTS HISTORISÉS     -->
+          <!-- =============================================================== -->
+          <div class="bg-gray-950/70 border border-gray-800/90 rounded-xl p-2 space-y-2">
+            <div
+              class="h-6 px-2 flex items-center justify-between text-[11px] font-semibold border-b border-gray-800/70 pb-1">
+              <span class="text-rose-400 flex items-center gap-1.5 font-bold">
+                🛡️ Volet 4 — Sécurités, Sondes (TCK/TCJ) & Contacts Historisés
+              </span>
+              <span class="text-emerald-400 text-[10px] font-mono font-bold" id="sec-hover-state">Temps réel</span>
+            </div>
+
+            <!-- Badges d'état temps réel / dynamique au survol -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-1.5 text-[11px]" id="security-badges"></div>
+
+            <!-- Rubans booléens d'historique alignés au pixel près -->
+            <div class="px-[42px] sm:px-[64px]">
+              <div id="security-ribbons-plot-area" class="relative space-y-1.5 py-1 cursor-crosshair">
+                <!-- Ruban 1 : Porte foyer (offset 115 bit 4) -->
+                <div class="relative h-5 rounded bg-gray-900 border border-gray-800 overflow-hidden">
+                  <div id="ribbon-track-door" class="w-full h-full flex"></div>
+                  <div
+                    class="absolute inset-y-0 left-2 flex items-center text-[10px] font-bold text-white drop-shadow pointer-events-none">
+                    🚪 Porte foyer (`115:4`) : <span id="ribbon-val-door" class="ml-1 text-emerald-300">--</span>
+                  </div>
+                </div>
+
+                <!-- Ruban 2 : Pressostat Pa (offset 115 bit 2) -->
+                <div class="relative h-5 rounded bg-gray-900 border border-gray-800 overflow-hidden">
+                  <div id="ribbon-track-pa" class="w-full h-full flex"></div>
+                  <div
+                    class="absolute inset-y-0 left-2 flex items-center text-[10px] font-bold text-white drop-shadow pointer-events-none">
+                    💨 Pressostat Pa (`115:2`) : <span id="ribbon-val-pa" class="ml-1 text-emerald-300">--</span>
+                  </div>
+                </div>
+
+                <!-- Ruban 3 : Sonde K foyer TCK (offset 115 bit 0) -->
+                <div class="relative h-5 rounded bg-gray-900 border border-gray-800 overflow-hidden">
+                  <div id="ribbon-track-tck" class="w-full h-full flex"></div>
+                  <div
+                    class="absolute inset-y-0 left-2 flex items-center text-[10px] font-bold text-white drop-shadow pointer-events-none">
+                    🔥 Sonde K foyer TCK (`115:0`) : <span id="ribbon-val-tck" class="ml-1 text-emerald-300">--</span>
+                  </div>
+                </div>
+
+                <!-- Ruban 4 : Sonde Fumées TCJ (offset 115 bit 1) -->
+                <div class="relative h-5 rounded bg-gray-900 border border-gray-800 overflow-hidden">
+                  <div id="ribbon-track-tcj" class="w-full h-full flex"></div>
+                  <div
+                    class="absolute inset-y-0 left-2 flex items-center text-[10px] font-bold text-white drop-shadow pointer-events-none">
+                    🌡️ Sonde Fumées TCJ (`115:1`) : <span id="ribbon-val-tcj" class="ml-1 text-emerald-300">--</span>
+                  </div>
+                </div>
+
+                <!-- Ruban 5 : Coupure Secteur Blackout (offset 40) -->
+                <div class="relative h-5 rounded bg-gray-900 border border-gray-800 overflow-hidden">
+                  <div id="ribbon-track-blackout" class="w-full h-full flex"></div>
+                  <div
+                    class="absolute inset-y-0 left-2 flex items-center text-[10px] font-bold text-white drop-shadow pointer-events-none">
+                    ⚡ Secteur 230V / AL01 (`40`) : <span id="ribbon-val-blackout"
+                      class="ml-1 text-emerald-300">--</span>
+                  </div>
+                </div>
+
+                <!-- Ruban 6 : Contacts Thermostats Externes (offset 22) -->
+                <div class="relative h-5 rounded bg-gray-900 border border-gray-800 overflow-hidden">
+                  <div id="ribbon-track-thermostats" class="w-full h-full flex"></div>
+                  <div
+                    class="absolute inset-y-0 left-2 flex items-center text-[10px] font-bold text-white drop-shadow pointer-events-none">
+                    🎛️ Contacts Thermostats Ext. M/SX/DX (`22`) : <span id="ribbon-val-thermostats"
+                      class="ml-1 text-sky-300">--</span>
+                  </div>
+                </div>
+
+                <!-- Ruban 7 : Trappe pellet (offset 115 bit 3) -->
+                <div class="relative h-5 rounded bg-gray-900 border border-gray-800 overflow-hidden">
+                  <div id="ribbon-track-trap" class="w-full h-full flex"></div>
+                  <div
+                    class="absolute inset-y-0 left-2 flex items-center text-[10px] font-bold text-white drop-shadow pointer-events-none">
+                    🌾 Trappe pellet (`115:3`) : <span id="ribbon-val-trap" class="ml-1 text-emerald-300">--</span>
+                  </div>
+                </div>
+
+                <!-- Ruban 8 : Trémie (Niveau granulés - offset 115 bit 6) -->
+                <div class="relative h-5 rounded bg-gray-900 border border-gray-800 overflow-hidden">
+                  <div id="ribbon-track-hoppersec" class="w-full h-full flex"></div>
+                  <div
+                    class="absolute inset-y-0 left-2 flex items-center text-[10px] font-bold text-white drop-shadow pointer-events-none">
+                    🪣 Trémie (`115:6`) : <span id="ribbon-val-hoppersec" class="ml-1 text-emerald-300">--</span>
+                  </div>
+                </div>
+
+                <!-- Ligne verticale curseur synchronisé pour le Volet 4 (Superposition absolue 60 FPS) -->
+                <div id="sec-cursor-line"
+                  class="hidden absolute top-0 bottom-0 !m-0 w-[1.5px] bg-white/90 z-30 pointer-events-none shadow-[0_0_6px_#fff]">
+                </div>
+              </div>
+            </div>
+
+            <!-- Bilan synthétique des sécurités sur la période -->
+            <div
+              class="pt-1.5 border-t border-gray-800/80 px-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-gray-400 font-semibold">🛡️ Bilan historique sécurités :</span>
+                <span id="sec-summary-status"
+                  class="px-2.5 py-0.5 rounded font-bold bg-emerald-950 text-emerald-300 border border-emerald-800 text-xs">
+                  100% Sécurisé (0 alerte)
+                </span>
+              </div>
+              <span id="sec-anomalies-count" class="text-gray-400 text-[10px] font-mono">0 défaut détecté</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>

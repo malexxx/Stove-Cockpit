@@ -1,0 +1,79 @@
+    <!-- =================================================================== -->
+    <!-- ONGLET MODE « + » (INVITATION CONTENEUR EN MODE AUTONOME / DÉMO)     -->
+    <!-- =================================================================== -->
+    <section id="tab-plus-teaser" class="hidden space-y-5">
+      <div class="card p-5 sm:p-7 border-l-4 border-l-indigo-500 bg-gradient-to-br from-slate-900/95 via-slate-900 to-indigo-950/30 space-y-6">
+        <div class="flex flex-wrap items-start justify-between gap-4 border-b border-gray-800 pb-4">
+          <div class="space-y-1.5 max-w-2xl">
+            <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-indigo-950/80 border border-indigo-700/60 text-[11px] font-bold text-indigo-300">
+              <span>✨</span><span>MODE AUTONOME ACTIF • FONCTIONNALITÉS AVANCÉES</span>
+            </div>
+            <h2 class="text-lg sm:text-2xl font-black text-white tracking-tight">
+              Débloquez le Mode « + » avec le Conteneur Compagnon
+            </h2>
+            <p class="text-xs sm:text-sm text-gray-300 leading-relaxed">
+              Vous pilotez actuellement votre poêle directement via le Cloud Micronova / Agua IOT sans serveur domestique.
+              Connectez le conteneur Docker léger (<code class="text-indigo-300 font-mono">stove-cockpit-server</code>) sur un NAS, Raspberry Pi ou mini-PC pour activer l'ensemble des modules 24/7 :
+            </p>
+          </div>
+          <div class="flex flex-col sm:flex-row gap-2 shrink-0">
+            <button type="button" onclick="openPlusSettingsShortcut()"
+              class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white text-xs sm:text-sm font-bold shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
+              <span>🔗</span><span>Connecter mon Conteneur « + »</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 text-xs">
+          <div class="bg-gray-950/80 border border-[#6e3b1f]/60 rounded-xl p-4 space-y-1.5">
+            <div class="text-base">🪵 <strong class="text-[#e8b693]">Suivi Granulés &amp; Trémie</strong></div>
+            <p class="text-gray-400 leading-relaxed">
+              Jauge temps réel de trémie, estimation d'autonomie, gestion du stock de sacs (15 kg), coût énergétique et prévisions DJU sur 7 jours.
+            </p>
+          </div>
+          <div class="bg-gray-950/80 border border-sky-800/60 rounded-xl p-4 space-y-1.5">
+            <div class="text-base">📊 <strong class="text-sky-300">Supervision &amp; Historique SQLite</strong></div>
+            <p class="text-gray-400 leading-relaxed">
+              Enregistrement continu 24/7, 4 graphiques analytiques multi-plages (12h à 1 an), export CSV complet et journal des cycles de chauffe.
+            </p>
+          </div>
+          <div class="bg-gray-950/80 border border-cyan-800/60 rounded-xl p-4 space-y-1.5">
+            <div class="text-base">🏠 <strong class="text-cyan-300">Pont Domotique Matter</strong></div>
+            <p class="text-gray-400 leading-relaxed">
+              Exposez votre poêle localement comme thermostat Matter natif dans Google Home, Apple Maison et Home Assistant (sans dépendance cloud tierce).
+            </p>
+          </div>
+          <div class="bg-gray-950/80 border border-amber-800/60 rounded-xl p-4 space-y-1.5">
+            <div class="text-base">✨ <strong class="text-amber-300">IA Combustion &amp; Mode Silence</strong></div>
+            <p class="text-gray-400 leading-relaxed">
+              Analyse continue du pouvoir calorifique des granulés / tirage conduit, alertes Push (ntfy / Discord) et minuterie Silence autonome côté serveur.
+            </p>
+          </div>
+          <div class="bg-gray-950/80 border border-emerald-800/60 rounded-xl p-4 space-y-1.5">
+            <div class="text-base">🔌 <strong class="text-emerald-300">Passerelle UART Locale (ESP32)</strong></div>
+            <p class="text-gray-400 leading-relaxed">
+              Affranchissez-vous du cloud fabricant en pilotant directement le bus série Micronova via une passerelle ESP32 locale ultra-réactive.
+            </p>
+          </div>
+          <div class="bg-gray-950/80 border border-purple-800/60 rounded-xl p-4 space-y-1.5">
+            <div class="text-base">💾 <strong class="text-purple-300">Snapshots EEPROM &amp; Repli 4G</strong></div>
+            <p class="text-gray-400 leading-relaxed">
+              Sauvegardes de registres installateur, audit de commandes et bascule automatique en Mode Autonome dès que vous quittez votre Wi-Fi local.
+            </p>
+          </div>
+        </div>
+
+        <div class="bg-gray-950/90 border border-gray-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div class="space-y-1">
+            <div class="font-bold text-gray-200">Déploiement Docker (HTTP LAN simple, sans certificat HTTPS) :</div>
+            <code class="block text-[11px] font-mono text-indigo-300 bg-gray-900 px-2.5 py-1.5 rounded border border-gray-800 break-all">
+              docker run -d --name stove-cockpit --network host -v ./data:/app/data ghcr.io/malexxx/stove-cockpit-server:latest
+            </code>
+          </div>
+          <button type="button" onclick="openOnboardingModal()"
+            class="px-3.5 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 font-semibold whitespace-nowrap cursor-pointer">
+            🧭 Assistant de démarrage
+          </button>
+        </div>
+      </div>
+    </section>

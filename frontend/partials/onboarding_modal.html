@@ -1,0 +1,151 @@
+  <!-- =================================================================== -->
+  <!-- MODALE D'ACCUEIL & CHOIX DE MODE (ONBOARDING PREMIER LANCEMENT)     -->
+  <!-- =================================================================== -->
+  <div id="onboarding-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div class="w-full max-w-2xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden my-auto">
+      <div class="px-5 py-4 bg-gradient-to-r from-orange-600/20 via-slate-900 to-indigo-600/20 border-b border-slate-800 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">🔥</span>
+          <div>
+            <h2 class="text-base sm:text-lg font-black text-white">Bienvenue sur Stove Cockpit</h2>
+            <p class="text-[11px] text-gray-400">Choisissez votre mode de connexion pour piloter votre poêle Micronova / Agua IOT</p>
+          </div>
+        </div>
+        <button id="onboarding-close-btn" type="button" onclick="closeOnboardingModal()"
+          class="hidden text-gray-400 hover:text-white px-2 py-1 rounded-lg hover:bg-slate-800 text-sm cursor-pointer">✕</button>
+      </div>
+
+      <div class="p-4 sm:p-5 space-y-4">
+        <!-- Choix des 3 parcours -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+          <button type="button" id="onb-tab-cloud" onclick="selectOnboardingMode('cloud')"
+            class="p-3 rounded-xl border-2 border-orange-500 bg-orange-950/30 text-left space-y-1 transition cursor-pointer">
+            <div class="font-bold text-orange-300 flex items-center gap-1.5"><span>☁️</span><span>Mode Autonome</span></div>
+            <div class="text-[11px] text-gray-400">Directement via le Cloud fabricant (sans serveur).</div>
+          </button>
+          <button type="button" id="onb-tab-container" onclick="selectOnboardingMode('container')"
+            class="p-3 rounded-xl border border-slate-700 bg-slate-950/60 hover:border-indigo-500 text-left space-y-1 transition cursor-pointer">
+            <div class="font-bold text-indigo-300 flex items-center gap-1.5"><span>✨</span><span>Mode « + » Conteneur</span></div>
+            <div class="text-[11px] text-gray-400">Connecter votre serveur Docker LAN (Pellets, Matter, Historique).</div>
+          </button>
+          <button type="button" id="onb-tab-demo" onclick="selectOnboardingMode('demo')"
+            class="p-3 rounded-xl border border-slate-700 bg-slate-950/60 hover:border-emerald-500 text-left space-y-1 transition cursor-pointer">
+            <div class="font-bold text-emerald-300 flex items-center gap-1.5"><span>🧪</span><span>Mode Démo</span></div>
+            <div class="text-[11px] text-gray-400">Tester toute l'interface immédiatement sans poêle.</div>
+          </button>
+        </div>
+
+        <!-- Formulaire A : Cloud Direct -->
+        <div id="onb-panel-cloud" class="space-y-3 text-xs bg-slate-950/70 border border-slate-800 rounded-xl p-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="onb-brand" class="text-gray-300 font-semibold block mb-1">Marque du poêle</label>
+              <select id="onb-brand" onchange="onOnboardingBrandChange()"
+                class="w-full bg-slate-900 border border-slate-700 focus:border-orange-500 rounded-lg px-3 py-2 text-white outline-none"></select>
+            </div>
+            <div>
+              <label for="onb-hopper" class="text-gray-300 font-semibold block mb-1">Capacité trémie (kg)</label>
+              <input id="onb-hopper" type="number" min="5" max="500" step="1" value="30"
+                class="w-full bg-slate-900 border border-slate-700 focus:border-orange-500 rounded-lg px-3 py-2 text-white outline-none tabular-nums" />
+            </div>
+          </div>
+
+          <div id="onb-custom-brand-fields" class="hidden grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="onb-api-url" class="text-gray-400 block mb-1">URL API Agua IOT</label>
+              <input id="onb-api-url" type="url" placeholder="https://marque.agua-iot.com"
+                class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono outline-none" />
+            </div>
+            <div>
+              <label for="onb-customer-code" class="text-gray-400 block mb-1">Customer Code</label>
+              <input id="onb-customer-code" type="text" placeholder="123456"
+                class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono outline-none" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="onb-email" class="text-gray-300 font-semibold block mb-1">Email du compte Cloud</label>
+              <input id="onb-email" type="email" placeholder="votre.email@domaine.fr"
+                class="w-full bg-slate-900 border border-slate-700 focus:border-orange-500 rounded-lg px-3 py-2 text-white outline-none" />
+            </div>
+            <div>
+              <label for="onb-password" class="text-gray-300 font-semibold block mb-1">Mot de passe</label>
+              <input id="onb-password" type="password" placeholder="••••••••"
+                class="w-full bg-slate-900 border border-slate-700 focus:border-orange-500 rounded-lg px-3 py-2 text-white outline-none" />
+            </div>
+          </div>
+
+          <div id="onb-cloud-status" class="hidden rounded-lg p-2.5 text-[11px] font-mono"></div>
+
+          <div class="flex flex-wrap justify-end gap-2 pt-1">
+            <button type="button" onclick="testOnboardingCloud()"
+              class="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-gray-200 border border-slate-600 font-semibold cursor-pointer">
+              🔍 Tester la connexion
+            </button>
+            <button type="button" onclick="saveOnboardingCloud()"
+              class="px-4 py-2 rounded-lg bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold shadow cursor-pointer">
+              🚀 Connecter &amp; Démarrer
+            </button>
+          </div>
+        </div>
+
+        <!-- Formulaire B : Conteneur Mode + -->
+        <div id="onb-panel-container" class="hidden space-y-3 text-xs bg-slate-950/70 border border-slate-800 rounded-xl p-4">
+          <p class="text-gray-300 leading-relaxed">
+            Entrez l'URL HTTP locale de votre conteneur <code class="text-indigo-300 font-mono">stove-cockpit-server</code> et le Token API affiché dans ses paramètres (onglet Système &gt; Appairage Mobile).
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="onb-plus-url" class="text-gray-300 font-semibold block mb-1">URL HTTP du Conteneur</label>
+              <input id="onb-plus-url" type="url" placeholder="http://192.168.1.50:8080"
+                class="w-full bg-slate-900 border border-slate-700 focus:border-indigo-500 rounded-lg px-3 py-2 text-white font-mono outline-none" />
+            </div>
+            <div>
+              <label for="onb-plus-token" class="text-gray-300 font-semibold block mb-1">Token API (« Mode + »)</label>
+              <input id="onb-plus-token" type="password" placeholder="Token d'appairage..."
+                class="w-full bg-slate-900 border border-slate-700 focus:border-indigo-500 rounded-lg px-3 py-2 text-white font-mono outline-none" />
+            </div>
+          </div>
+          <label class="flex items-center gap-2 text-gray-300 cursor-pointer">
+            <input id="onb-plus-fallback" type="checkbox" checked class="rounded bg-slate-900 border-slate-600 text-indigo-500" />
+            <span>Repli automatique vers le Cloud hors du Wi-Fi local (4G/5G) si des identifiants Cloud sont enregistrés</span>
+          </label>
+          <div id="onb-container-status" class="hidden rounded-lg p-2.5 text-[11px] font-mono"></div>
+          <div class="flex flex-wrap justify-end gap-2 pt-1">
+            <button type="button" onclick="testOnboardingContainer()"
+              class="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-gray-200 border border-slate-600 font-semibold cursor-pointer">
+              📡 Ping /health
+            </button>
+            <button type="button" onclick="saveOnboardingContainer()"
+              class="px-4 py-2 rounded-lg bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white font-bold shadow cursor-pointer">
+              ✨ Activer le Mode « + »
+            </button>
+          </div>
+        </div>
+
+        <!-- Formulaire C : Mode Démo -->
+        <div id="onb-panel-demo" class="hidden space-y-3 text-xs bg-slate-950/70 border border-slate-800 rounded-xl p-4">
+          <p class="text-gray-300 leading-relaxed">
+            Explorez Stove Cockpit avec un poêle virtuel interactif (consignes, puissance, souffleries, alarme, chrono) sans aucun compte Cloud.
+          </p>
+          <div>
+            <label for="onb-demo-profile" class="text-gray-300 font-semibold block mb-1">Profil de poêle virtuel</label>
+            <select id="onb-demo-profile"
+              class="w-full bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-lg px-3 py-2 text-white outline-none">
+              <option value="nobis_2ducts">Poêle Air Canalisé — 2 zones (SX + DX)</option>
+              <option value="air_1duct">Poêle Air Canalisé — 1 zone (SX)</option>
+              <option value="simple_air">Poêle Air Simple (Ambiance seule)</option>
+              <option value="hydro">Poêle Hydro (Eau / Bouilleur)</option>
+            </select>
+          </div>
+          <div class="flex justify-end pt-1">
+            <button type="button" onclick="activateOnboardingDemo()"
+              class="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold shadow cursor-pointer">
+              🧪 Lancer le Mode Démo
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>

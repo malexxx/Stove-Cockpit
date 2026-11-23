@@ -1,0 +1,70 @@
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore:.*httpx.*:UserWarning",
+    "ignore:.*starlette.*:Warning",
+]
+
+[tool.coverage.run]
+omit = [
+    "tools/*",
+    "app/*",
+    "tests/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "except ImportError:",
+]
+
+[tool.mutmut]
+paths_to_mutate = "analytics/"
+backup = false
+runner = ".venv\\Scripts\\python.exe -m pytest -x -q tests/test_analytics.py"
+tests_dir = "tests"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+exclude = [
+    ".git",
+    ".venv",
+    ".node",
+    "__pycache__",
+    "data"
+]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # Pyflakes (variables non définies, syntaxe, imports cassés)
+    "B",      # flake8-bugbear (pièges courants, raise ... from err, zip strict)
+    "RUF006", # asyncio-dangling-task (tâches fire-and-forget collectables par GC)
+    "ASYNC",  # appels bloquants dans fonctions async def
+    "C901",   # complexité cyclomatique McCabe <= 10
+    "S110",   # interdiction des blocs try-except-pass silencieux
+    "UP006",  # annotations PEP 585 (dict/list/tuple natifs)
+    "UP007",  # unions PEP 604 (X | Y)
+    "UP015",  # modes open() redondants
+    "UP017",  # datetime.UTC
+    "UP035",  # imports typing dépréciés
+    "UP041",  # TimeoutError natif
+    "UP045",  # Optional PEP 604 (T | None)
+    "PERF",   # anti-patterns de performance Python
+    "FAST",   # bonnes pratiques FastAPI (Annotated)
+    "PIE808", # range(0, n) redondant
+]
+ignore = [
+    "E501",     # line-too-long
+    "E402",     # module level import not at top (nécessaire pour sys.path.insert(0, BASE_DIR))
+    "B008",     # FastAPI Depends/Body/Query/Path dans les valeurs par défaut
+    "ASYNC109", # paramètre timeout explicite sur borrow_http_client / helpers
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10

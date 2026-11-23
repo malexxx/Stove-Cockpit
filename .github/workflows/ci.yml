@@ -1,0 +1,57 @@
+name: CI — Backend & Frontend
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-tests:
+    name: Backend Python & Matter Bridge
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt pytest httpx
+      - name: Check Matter bridge JS syntax
+        run: node --check backend/matter_bridge/bridge.mjs
+      - name: Run backend test suite
+        working-directory: backend
+        env:
+          DB_PATH: /tmp/stove_ci_test.db
+        run: |
+          pytest -q -k "not playwright" tests
+
+  frontend-tests:
+    name: Frontend Vitest & Vite Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Run frontend unit tests
+        working-directory: frontend
+        run: npm test
+      - name: Build production bundle
+        working-directory: frontend
+        run: npm run build
+      - name: Verify bundle outputs
+        run: |
+          test -f frontend/dist/index.html
+          test -f frontend/dist/css/tailwind.generated.css

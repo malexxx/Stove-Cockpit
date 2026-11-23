@@ -1,0 +1,16 @@
+{
+  "appId": "io.github.malexxx.stovecockpit",
+  "appName": "Stove Cockpit",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "http"
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

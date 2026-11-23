@@ -1,0 +1,12 @@
+-r requirements.txt
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+pytest-cov>=5.0.0
+coverage>=7.6.0
+ruff>=0.11.0
+pre-commit>=3.7.0
+schemathesis>=4.33.0
+playwright>=1.50.0
+pytest-playwright>=0.10.0
+locust>=2.30.0
+# Note: mutmut==2.4.5 épingle coverage==5.5 (incompatible avec pytest-cov>=5) ; installer dans un venv dédié pour le mutation testing.

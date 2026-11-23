@@ -1,0 +1,329 @@
+{
+  "version": "1.0.0",
+  "brands": [
+    {
+      "id": "nobis",
+      "name": "Nobis-Fi (Nobis)",
+      "customer_code": "700700",
+      "api_url": "https://nobis.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "alfaplam",
+      "name": "Alfaplam",
+      "customer_code": "862148",
+      "api_url": "https://alfaplam.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "app_o_bioen",
+      "name": "APP-O BIOEN (Unical)",
+      "customer_code": "289982",
+      "api_url": "https://unical.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "boreal",
+      "name": "Boreal Home",
+      "customer_code": "173118",
+      "api_url": "https://boreal.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "bronpi",
+      "name": "Bronpi Home",
+      "customer_code": "164873",
+      "api_url": "https://bronpi.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "darwin",
+      "name": "Darwin Evolution (Cola)",
+      "customer_code": "475219",
+      "api_url": "https://cola.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "easy_connect",
+      "name": "Easy Connect (MCZ)",
+      "customer_code": "354924",
+      "api_url": "https://remote.mcz.it",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "easy_connect_plus",
+      "name": "Easy Connect Plus (MCZ)",
+      "customer_code": "746318",
+      "api_url": "https://remote.mcz.it",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "easy_connect_poele",
+      "name": "Easy Connect Poêle (MCZ)",
+      "customer_code": "354925",
+      "api_url": "https://remote.mcz.it",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "elcofire",
+      "name": "Elcofire Pellet Home",
+      "customer_code": "132679",
+      "api_url": "https://elcofire.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "elfire",
+      "name": "Elfire Wifi",
+      "customer_code": "402762",
+      "api_url": "https://elfire.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "eoss",
+      "name": "EOSS Wifi (Solartecnik)",
+      "customer_code": "326495",
+      "api_url": "https://solartecnik.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "evacalor",
+      "name": "EvaCalòr - PuntoFuoco",
+      "customer_code": "635987",
+      "api_url": "https://evastampaggi.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "fontana",
+      "name": "Fontana Forni",
+      "customer_code": "505912",
+      "api_url": "https://fontanaforni.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "fonteflamme",
+      "name": "Fonte Flamme contrôle 1",
+      "customer_code": "848324",
+      "api_url": "https://fonteflame.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "globefire",
+      "name": "Globe-fire",
+      "customer_code": "634876",
+      "api_url": "https://globefire.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "goheat",
+      "name": "GO HEAT (AMG)",
+      "customer_code": "859435",
+      "api_url": "https://amg.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "jollymec",
+      "name": "Jolly Mec Wi Fi",
+      "customer_code": "732584",
+      "api_url": "https://jollymec.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "karmek",
+      "name": "Karmek Wifi",
+      "customer_code": "403873",
+      "api_url": "https://karmekone.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "klover",
+      "name": "Klover Home",
+      "customer_code": "143789",
+      "api_url": "https://klover.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "laminox",
+      "name": "LAMINOX Remote Control 2.0",
+      "customer_code": "352678",
+      "api_url": "https://laminox.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "lorflam",
+      "name": "Lorflam Home",
+      "customer_code": "121567",
+      "api_url": "https://lorflam.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "moretti",
+      "name": "Moretti design",
+      "customer_code": "624813",
+      "api_url": "https://moretti.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "mycorisit",
+      "name": "My Corisit",
+      "customer_code": "101427",
+      "api_url": "https://mycorisit.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "mypiazzetta",
+      "name": "MyPiazzetta",
+      "customer_code": "458632",
+      "api_url": "https://piazzetta.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": "https://piazzetta-iot.app2cloud.it/api/bridge/endpoint/"
+    },
+    {
+      "id": "mysuperior",
+      "name": "MySuperior",
+      "customer_code": "458632",
+      "api_url": "https://piazzetta.agua-iot.com",
+      "brand_id": "2",
+      "brand": "superior",
+      "login_api_url": "https://piazzetta-iot.app2cloud.it/api/bridge/endpoint/"
+    },
+    {
+      "id": "nina",
+      "name": "Nina (Micronova générique)",
+      "customer_code": "999999",
+      "api_url": "https://micronova.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "nordicfire",
+      "name": "Nordic Fire 2.0",
+      "customer_code": "132678",
+      "api_url": "https://nordicfire.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "ravelli",
+      "name": "Ravelli Wi-Fi",
+      "customer_code": "953712",
+      "api_url": "https://ravelli.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "stufepelletitalia",
+      "name": "Stufe a pellet Italia",
+      "customer_code": "015142",
+      "api_url": "https://stufepelletitalia.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "thermoflux",
+      "name": "Thermoflux",
+      "customer_code": "391278",
+      "api_url": "https://thermoflux.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "extraflame",
+      "name": "Total Control 3.0 (Extraflame)",
+      "customer_code": "195764",
+      "api_url": "https://extraflame.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "tssmart",
+      "name": "TS Smart (Tim Sistem)",
+      "customer_code": "046629",
+      "api_url": "https://timsistem.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "turbofonte",
+      "name": "TurboFonte",
+      "customer_code": "354924",
+      "api_url": "https://remote.mcz.it",
+      "brand_id": "2",
+      "brand": "turbofonte",
+      "login_api_url": null
+    },
+    {
+      "id": "wiphire",
+      "name": "Wi-Phire (Linea VZ)",
+      "customer_code": "521228",
+      "api_url": "https://lineavz.agua-iot.com",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    },
+    {
+      "id": "custom",
+      "name": "Serveur Agua IOT personnalisé",
+      "customer_code": "",
+      "api_url": "",
+      "brand_id": "1",
+      "brand": null,
+      "login_api_url": null
+    }
+  ]
+}

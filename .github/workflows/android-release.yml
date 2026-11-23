@@ -1,0 +1,94 @@
+name: Android — Build APK & Play Store AAB
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  android-build:
+    name: Build Android APK & AAB
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install & Build Frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+          npm run build
+          npx cap sync android
+      - name: Decode Release Keystore (if configured)
+        id: keystore
+        run: |
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > /tmp/release.keystore
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Compute Version Code
+        id: ver
+        run: |
+          echo "code=$((30000 + ${GITHUB_RUN_NUMBER:-1}))" >> "$GITHUB_OUTPUT"
+      - name: Build Signed Release AAB & APK
+        if: steps.keystore.outputs.signed == 'true'
+        working-directory: frontend/android
+        env:
+          ANDROID_VERSION_CODE: ${{ steps.ver.outputs.code }}
+          ANDROID_KEYSTORE_PATH: /tmp/release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew bundleRelease assembleRelease
+      - name: Build Debug APK (Fallback without keystore)
+        if: steps.keystore.outputs.signed != 'true'
+        working-directory: frontend/android
+        env:
+          ANDROID_VERSION_CODE: ${{ steps.ver.outputs.code }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+      - name: Upload Android Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: stove-cockpit-android
+          path: |
+            frontend/android/app/build/outputs/apk/**/*.apk
+            frontend/android/app/build/outputs/bundle/**/*.aab
+          if-no-files-found: warn
+      - name: Publish to Google Play Internal Track (if configured)
+        if: startsWith(github.ref, 'refs/tags/v') && steps.keystore.outputs.signed == 'true' && secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != ''
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: io.github.malexxx.stovecockpit
+          releaseFiles: frontend/android/app/build/outputs/bundle/release/app-release.aab
+          track: internal
+          status: completed
+      - name: Attach APK/AAB to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            frontend/android/app/build/outputs/apk/**/*.apk
+            frontend/android/app/build/outputs/bundle/**/*.aab
+          fail_on_unmatched_files: false
+      - name: Cleanup Keystore
+        if: always()
+        run: rm -f /tmp/release.keystore

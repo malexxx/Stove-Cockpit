@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="fr" class="dark">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+  <!-- SEO & Référencement -->
+  <title>Stove Cockpit — Pilotage Universel Poêles Micronova / Agua IOT</title>
+  <meta name="description"
+    content="Application universelle et compagnon domotique pour poêles à granulés et hydro Micronova (Agua IOT). Mode Autonome Cloud ou Mode + Conteneur avec pont Matter." />
+  <meta name="keywords"
+    content="Stove Cockpit, Micronova, Agua IoT, poêle granulés, Nobis, Piazzetta, Ravelli, Matter, Home Assistant, smart home" />
+  <meta name="author" content="Stove Cockpit" />
+
+  <!-- Mode Application Native Plein Écran (PWA / Capacitor iOS & Android) -->
+  <meta name="theme-color" content="#0b0f19" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Stove Cockpit" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
+  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+  <link rel="stylesheet" href="./css/tailwind.generated.css" />
+  <link rel="stylesheet" href="./css/styles.css" />
+
+  <!-- Chargeur de providers & cœur Micronova Vite/Capacitor -->
+  <script type="module" src="/src/main.js"></script>
+  <script defer src="./vendor/chart.umd.min.js"></script>
+</head>
+
+<body class="min-h-screen flex flex-col pb-28 md:pb-6">
+
+  <!-- TOAST NOTIFICATION FLOTTANTE -->
+  <div id="toast-box"
+    class="fixed bottom-24 md:bottom-5 right-4 z-50 hidden px-4 py-2.5 rounded-xl shadow-2xl border text-xs font-semibold flex items-center gap-2 transition-all">
+  </div>
+
+<!-- @include partials/modals.html -->
+<!-- @include partials/onboarding_modal.html -->
+
+  <!-- HEADER PRINCIPAL ÉPURÉ -->
+  <header
+    class="bg-gray-900/95 backdrop-blur border-b border-gray-800 px-3 sm:px-6 py-2 flex items-center justify-between gap-2">
+    <!-- GAUCHE : Météo Extérieure Cliquable -->
+    <div class="flex items-center gap-2 sm:gap-3">
+      <button type="button" onclick="openWeatherModal()"
+        class="flex items-center gap-1.5 text-xs bg-gray-950/80 hover:bg-gray-800/90 border border-gray-800 hover:border-sky-500/60 px-2.5 py-1.5 rounded-lg shadow-inner transition cursor-pointer"
+        title="Conditions météo extérieures • Cliquer pour afficher les données recueillies">
+        <span class="text-sm">🌦️</span>
+        <div class="flex items-baseline gap-1.5">
+          <span class="font-bold text-sky-400 tabular-nums"><span id="kpi-w-t">--</span>°C</span>
+          <span class="text-gray-400 text-[11px] hidden sm:inline">
+            (<b id="kpi-w-h" class="text-gray-300 font-normal">--</b>% • <b id="kpi-w-w"
+              class="text-gray-300 font-normal">--</b> km/h)
+          </span>
+        </div>
+      </button>
+    </div>
+
+    <!-- CENTRE : Autonomie Trémie (Conteneur uniquement) OU Badge Mode Actif -->
+    <div class="flex items-center gap-2">
+      <div id="hdr-hopper-pill" data-requires="container" onclick="switchTab('tab-pellets')"
+        class="flex items-center gap-1.5 bg-gray-950/85 hover:bg-gray-850 border border-gray-800 hover:border-amber-500/60 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs cursor-pointer transition shadow-inner select-none"
+        title="Stock de granulés • Cliquer pour afficher le détail Pellets">
+        <span class="text-sm">🪵</span>
+        <span id="hdr-pellet-hopper" class="font-bold text-amber-400 text-xs sm:text-sm tabular-nums">--%</span>
+      </div>
+
+      <button type="button" id="hdr-app-mode-pill" onclick="openPlusSettingsShortcut()"
+        class="px-2.5 py-1 rounded-lg border border-amber-600/60 bg-amber-950/60 text-amber-300 text-[10px] sm:text-xs font-extrabold tracking-wide cursor-pointer hover:brightness-110 transition"
+        title="Mode actif • Cliquer pour configurer l'Option « + » ou le mode">
+        AUTONOME
+      </button>
+    </div>
+
+    <!-- DROITE : Pilule unifiée Mode de connexion + Picto Conteneur -->
+    <div id="hdr-conn-group" class="flex items-center justify-end flex-shrink-0">
+      <div id="hdr-status-pill" onclick="openConfigModal()"
+        class="flex items-center gap-1.5 px-2.5 py-1 sm:py-1.5 rounded-xl border bg-emerald-950/60 border-emerald-500/70 shadow-[0_0_10px_rgba(16,185,129,0.25)] cursor-pointer transition-all duration-200 hover:brightness-110"
+        title="État de connexion • Cliquer pour ouvrir les réglages">
+        <button type="button" id="hdr-mode-conn-btn" onclick="event.stopPropagation(); pollNow();"
+          class="flex items-center justify-center text-emerald-400 hover:scale-110 transition-transform cursor-pointer"
+          title="Liaison active • Cliquer pour forcer l'actualisation">
+          <span id="hdr-mode-conn-icon" class="flex items-center justify-center w-4 h-4 sm:w-[18px] sm:h-[18px]">
+            <svg viewBox="0 0 24 24" class="w-4 h-4 sm:w-[18px] sm:h-[18px]" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+            </svg>
+          </span>
+        </button>
+        <span class="w-px h-3.5 bg-gray-700/80"></span>
+        <span id="hdr-container-version"
+          class="flex items-center justify-center w-4 h-4 sm:w-[18px] sm:h-[18px] text-emerald-400"
+          title="Stove Cockpit Conteneur / Mode Autonome">
+          <svg viewBox="0 0 24 24" class="w-4 h-4 sm:w-[18px] sm:h-[18px]" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 13.5h15.5c1.5 0 2.8-.8 3.5-2.1-.7-.5-1.6-.6-2.4-.3.2-.9-.1-1.9-.9-2.5-.8.7-1.1 1.8-.8 2.8-.6.4-1.4.6-2.2.6H2v1.5z" />
+            <path d="M3 13.5c0 3.6 2.8 6 7 6 4.7 0 8.2-2.2 9.8-6" />
+            <rect x="4.5" y="9.5" width="2.5" height="2" rx="0.3" />
+            <rect x="7.8" y="9.5" width="2.5" height="2" rx="0.3" />
+            <rect x="11.1" y="9.5" width="2.5" height="2" rx="0.3" />
+            <rect x="7.8" y="6.8" width="2.5" height="2" rx="0.3" />
+            <rect x="11.1" y="6.8" width="2.5" height="2" rx="0.3" />
+          </svg>
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===================================================================== -->
+  <!-- BARRE DE NAVIGATION PC                                                -->
+  <!-- ===================================================================== -->
+  <nav class="hidden md:flex justify-center bg-gray-900/70 border-b border-gray-800 px-6 overflow-x-auto text-sm">
+    <button onclick="switchTab('tab-control')" id="btn-tab-control"
+      class="px-5 py-3 tab-active whitespace-nowrap flex items-center gap-2">
+      <span>🎮</span><span>Pilotage</span>
+    </button>
+    <button onclick="switchTab('tab-pellets')" id="btn-tab-pellets" data-requires="container"
+      class="px-5 py-3 text-gray-400 hover:text-white whitespace-nowrap flex items-center gap-2">
+      <span>🪵</span><span>Pellets</span>
+    </button>
+    <button onclick="switchTab('tab-chrono')" id="btn-tab-chrono"
+      class="px-5 py-3 text-gray-400 hover:text-white whitespace-nowrap flex items-center gap-2">
+      <span>🕒</span><span>Programmation</span>
+    </button>
+    <button onclick="switchTab('tab-dashboard')" id="btn-tab-dashboard" data-requires="container"
+      class="px-5 py-3 text-gray-400 hover:text-white whitespace-nowrap flex items-center gap-2">
+      <span>📊</span><span>Supervision</span>
+    </button>
+    <button onclick="switchTab('tab-plus-teaser')" id="btn-tab-plus-teaser" data-requires="standalone-only"
+      class="px-5 py-3 text-indigo-300 hover:text-white whitespace-nowrap flex items-center gap-2 font-semibold">
+      <span>✨</span><span>Mode +</span>
+    </button>
+    <button onclick="switchTab('tab-installer')" id="btn-tab-installer"
+      class="px-5 py-3 text-gray-400 hover:text-white whitespace-nowrap flex items-center gap-2">
+      <span>🔧</span><span>Paramètres</span>
+    </button>
+  </nav>
+
+  <!-- ===================================================================== -->
+  <!-- BOTTOM APP BAR SUR SMARTPHONE                                         -->
+  <!-- ===================================================================== -->
+  <nav id="mobile-bottom-nav"
+    class="fixed bottom-0 left-0 right-0 z-40 md:hidden backdrop-blur-md bg-gray-900/95 border-t border-gray-800 flex justify-around py-1 px-1 text-[11px] pb-[env(safe-area-inset-bottom,4px)]">
+    <button onclick="switchTab('tab-control')" id="mob-btn-tab-control"
+      class="flex-1 flex flex-col items-center justify-center h-14 min-h-[56px] py-1 mob-tab-active" title="Pilotage">
+      <span class="text-2xl">🎮</span>
+    </button>
+    <button onclick="switchTab('tab-pellets')" id="mob-btn-tab-pellets" data-requires="container"
+      class="flex-1 flex flex-col items-center justify-center h-14 min-h-[56px] py-1 text-gray-400" title="Pellets">
+      <span class="text-2xl">🪵</span>
+    </button>
+    <button onclick="switchTab('tab-chrono')" id="mob-btn-tab-chrono"
+      class="flex-1 flex flex-col items-center justify-center h-14 min-h-[56px] py-1 text-gray-400" title="Programmation">
+      <span class="text-2xl">🕒</span>
+    </button>
+    <button onclick="switchTab('tab-dashboard')" id="mob-btn-tab-dashboard" data-requires="container"
+      class="flex-1 flex flex-col items-center justify-center h-14 min-h-[56px] py-1 text-gray-400" title="Supervision">
+      <span class="text-2xl">📊</span>
+    </button>
+    <button onclick="switchTab('tab-plus-teaser')" id="mob-btn-tab-plus-teaser" data-requires="standalone-only"
+      class="flex-1 flex flex-col items-center justify-center h-14 min-h-[56px] py-1 text-indigo-300" title="Mode +">
+      <span class="text-2xl">✨</span>
+    </button>
+    <button onclick="switchTab('tab-installer')" id="mob-btn-tab-installer"
+      class="flex-1 flex flex-col items-center justify-center h-14 min-h-[56px] py-1 text-gray-400" title="Paramètres">
+      <span class="text-2xl">🔧</span>
+    </button>
+  </nav>
+
+  <!-- CONTENU PRINCIPAL -->
+  <main class="flex-1 px-1.5 pt-2 pb-28 md:pb-6 sm:p-6 max-w-[1650px] w-full mx-auto space-y-6">
+
+<!-- @include partials/tab_control.html -->
+<!-- @include partials/tab_pellets.html -->
+<!-- @include partials/tab_chrono.html -->
+<!-- @include partials/tab_dashboard.html -->
+<!-- @include partials/tab_plus_teaser.html -->
+    <!-- =================================================================== -->
+    <!-- ONGLET 5 : PARAMÈTRES, TARAGES & OBSERVABILITÉ                       -->
+    <!-- =================================================================== -->
+    <section id="tab-installer" class="hidden space-y-3.5 pb-8 md:pb-0 max-w-4xl mx-auto">
+
+      <!-- EN-TÊTE COMPACT + RECHERCHE INSTANTANÉE -->
+      <div class="card p-3 sm:p-4 bg-gray-900/90 border border-gray-800 shadow-xl backdrop-blur-md space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2.5">
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-orange-600/20 border border-orange-500/30 flex items-center justify-center text-lg shadow-inner shrink-0">
+              🔧
+            </div>
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <h2 class="text-sm sm:text-base font-bold text-white tracking-wide">Paramètres &amp; Observabilité</h2>
+                <span id="hdr-docker-version-badge" data-requires="container"
+                  class="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-700/60"
+                  title="Version du serveur Stove Cockpit">
+                  🐳 Docker v3.0.0
+                </span>
+                <span id="installer-auth-pill" data-requires="container"
+                  class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700 flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span><span id="installer-auth-pill-text">Expert Verrouillé</span>
+                </span>
+              </div>
+              <p class="text-[11px] text-gray-400">Touchez une section pour l'ouvrir — un seul bloc reste déplié à la fois</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Barre de recherche rapide -->
+        <div class="relative flex items-center bg-gray-950/90 border border-gray-800 focus-within:border-orange-500/70 rounded-xl px-3 py-2 transition">
+          <span class="text-xs mr-2 text-gray-400">🔍</span>
+          <input id="settings-acc-search" type="text"
+            placeholder="Rechercher un réglage (ex: Marque, Mode +, Météo, SX, DX, Matter, Logs...)"
+            oninput="filterSettingsAccordions(this.value)"
+            class="flex-1 bg-transparent text-xs sm:text-sm text-white placeholder-gray-500 outline-none" />
+          <button id="settings-acc-search-clear" type="button"
+            onclick="const inp=document.getElementById('settings-acc-search'); if(inp){inp.value='';} filterSettingsAccordions('');"
+            class="hidden text-xs text-gray-400 hover:text-white px-1.5 cursor-pointer" title="Effacer la recherche">✕</button>
+        </div>
+      </div>
+
+      <!-- MESSAGE SI AUCUN RÉSULTAT DE RECHERCHE -->
+      <div id="settings-acc-empty" class="hidden card p-6 text-center text-xs text-gray-400">
+        Aucun bloc de paramètres ne correspond à votre recherche.
+      </div>
+
+<!-- @include partials/tab_settings_general.html -->
+<!-- @include partials/tab_settings_system.html -->
+    </section>
+
+  </main>
+
+  <!-- Scripts modulaires Stove Cockpit -->
+  <script defer src="./js/state.js"></script>
+  <script defer src="./js/charts/series_utils.js"></script>
+  <script defer src="./js/charts/cockpit_charts.js"></script>
+  <script defer src="./js/charts/security_pane.js"></script>
+  <script defer src="./js/core/ui_core.js"></script>
+  <script defer src="./js/core/mode_visibility.js"></script>
+  <script defer src="./js/features/stove_control.js"></script>
+  <script defer src="./js/features/silence.js"></script>
+  <script defer src="./js/features/chrono.js"></script>
+  <script defer src="./js/features/pellets_ai.js"></script>
+  <script defer src="./js/features/weather_flower.js"></script>
+  <script defer src="./js/features/installer.js"></script>
+  <script defer src="./js/features/settings.js"></script>
+  <script defer src="./js/features/matter.js"></script>
+  <script defer src="./js/features/triarc_controller.js"></script>
+  <script defer src="./js/features/triarc_render.js"></script>
+  <script defer src="./js/core/sync.js"></script>
+  <script defer src="./js/app.js"></script>
+</body>
+
+</html>

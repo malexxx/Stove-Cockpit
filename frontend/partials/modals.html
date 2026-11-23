@@ -1,0 +1,416 @@
+  <!-- MODALE D'INTERACTION GÉNÉRIQUE (REMPLACE CONFIRM / PROMPT / ALERT) -->
+  <div id="action-modal"
+    class="fixed inset-0 z-[70] hidden bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div
+      class="card max-w-md w-full m-auto p-5 space-y-4 border border-gray-700 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-gray-800 pb-2.5">
+        <h3 id="action-modal-title" class="text-sm font-bold text-white">Confirmation</h3>
+        <button onclick="closeActionModal()" class="text-gray-400 hover:text-white text-sm font-bold px-2">✕</button>
+      </div>
+      <div id="action-modal-message" class="text-xs text-gray-300 leading-relaxed whitespace-pre-line space-y-2"></div>
+      <div id="action-modal-input-wrap" class="hidden">
+        <input id="action-modal-input" type="text"
+          class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500" />
+      </div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-gray-800">
+        <button id="action-modal-cancel-btn" onclick="closeActionModal()"
+          class="px-3.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold">Annuler</button>
+        <button id="action-modal-confirm-btn"
+          class="px-4 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold">Confirmer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODALE DÉDIÉE : ACTIVATION DU MODE SILENCE ! (DURÉE EN HEURES) -->
+  <div id="silence-modal"
+    class="fixed inset-0 z-50 hidden bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="card max-w-md w-full p-5 space-y-4 border border-purple-800/80 shadow-2xl bg-gray-950">
+      <div class="flex items-center justify-between border-b border-gray-800 pb-2.5">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">🤫</span>
+          <h3 class="text-sm font-bold text-white">Activer le mode Silence !</h3>
+        </div>
+        <button onclick="closeSilenceModal()" class="text-gray-400 hover:text-white text-sm font-bold px-2">✕</button>
+      </div>
+
+      <div class="space-y-3">
+        <!-- Actions résumées -->
+        <div class="rounded-lg bg-purple-950/30 border border-purple-800/50 p-3 space-y-1.5 text-xs text-purple-200">
+          <div class="font-bold flex items-center gap-1.5 text-purple-300">
+            <span>Fonctionnement intelligent du mode Silence :</span>
+          </div>
+          <ul class="space-y-1.5 text-[11px] text-gray-300 pl-4 list-disc">
+            <li><strong>Si poêle éteint :</strong> toutes les consignes de température (Salon, <span id="silence-modal-ducts-label">Canalisations SX &amp; DX</span>) passent immédiatement en <strong>hors gel (7°C)</strong>.</li>
+            <li><strong>Si poêle allumé :</strong> désactivation immédiate du <strong>Boost</strong>, du <strong>Mode Éco</strong> et de la <strong>programmation horaire (Chrono)</strong>, activation du <strong>Mode Auto total</strong> et bascule des consignes en <strong>hors gel (7°C)</strong>. Le poêle régule ainsi automatiquement en puissance minimale <strong>P0</strong> et ventilation <strong>Ventil 0</strong> (convection 100% silencieuse) <strong>sans s'éteindre</strong>.</li>
+            <li><strong>Fin de période :</strong> compte à rebours dynamique et <strong>restauration automatique</strong> intégrale de toutes les consignes et réglages initiaux.</li>
+          </ul>
+        </div>
+
+        <!-- Choix de la durée -->
+        <div class="space-y-2">
+          <label class="block text-xs font-semibold text-gray-300">
+            Durée du mode Silence (en heures) :
+          </label>
+          <!-- Boutons de présélection rapide -->
+          <div class="grid grid-cols-4 gap-2" id="silence-presets">
+            <button type="button" onclick="setSilenceDurationPreset(1)"
+              class="sil-preset-btn py-2 px-2 text-xs font-bold rounded-lg border border-gray-800 bg-gray-900 text-gray-300 hover:border-purple-600 transition">1
+              H</button>
+            <button type="button" onclick="setSilenceDurationPreset(2)"
+              class="sil-preset-btn py-2 px-2 text-xs font-bold rounded-lg border border-purple-500 bg-purple-900/50 text-purple-200 shadow hover:border-purple-400 transition">2
+              H (Défaut)</button>
+            <button type="button" onclick="setSilenceDurationPreset(3)"
+              class="sil-preset-btn py-2 px-2 text-xs font-bold rounded-lg border border-gray-800 bg-gray-900 text-gray-300 hover:border-purple-600 transition">3
+              H</button>
+            <button type="button" onclick="setSilenceDurationPreset(4)"
+              class="sil-preset-btn py-2 px-2 text-xs font-bold rounded-lg border border-gray-800 bg-gray-900 text-gray-300 hover:border-purple-600 transition">4
+              H</button>
+          </div>
+          <!-- Champ numérique personnalisé -->
+          <div class="flex items-center gap-2 pt-1">
+            <span class="text-xs text-gray-400">Durée personnalisée :</span>
+            <input id="silence-hours-input" type="number" min="0.5" max="24" step="0.5" value="2"
+              oninput="handleSilenceDurationInput()"
+              class="w-20 bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1 text-xs text-center font-bold text-white focus:outline-none focus:border-purple-500" />
+            <span class="text-xs text-gray-300 font-semibold">Heure(s)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2 border-t border-gray-800">
+        <button type="button" onclick="closeSilenceModal()"
+          class="px-3.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold">Annuler</button>
+        <button id="silence-modal-confirm-btn" type="button" onclick="confirmActivateSilence()"
+          class="px-4 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-purple-950/50">
+          <span>Activer Silence ! (2H)</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODALE DÉDIÉE : PONT MATTER LOCAL (GOOGLE HOME / NEST HUB MAX / APPLE HOME) -->
+  <div id="matter-modal"
+    class="fixed inset-0 z-50 hidden bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+    <div class="card max-w-xl w-full p-5 space-y-4 border border-cyan-800/80 shadow-2xl bg-gray-950 my-auto">
+      <div class="flex items-center justify-between border-b border-gray-800 pb-3">
+        <div class="flex items-center gap-2.5">
+          <span class="text-xl">🏠</span>
+          <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+              <span>Google Home & Nest Hub Max</span>
+              <span id="matter-status-badge"
+                class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-700 font-semibold">Matter
+                Local</span>
+            </h3>
+            <p class="text-[11px] text-gray-400">Thermostat Matter 100% local (sans cloud tiers ni ouverture de port)
+            </p>
+          </div>
+        </div>
+        <button onclick="closeMatterModal()"
+          class="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold flex items-center justify-center">✕</button>
+      </div>
+
+      <!-- État temps réel exposé à Google Home -->
+      <div class="grid grid-cols-3 gap-2 text-xs">
+        <div class="bg-gray-900/90 border border-gray-800 rounded-xl p-2.5 text-center">
+          <div class="text-[10px] text-gray-400">État Thermostat</div>
+          <div id="matter-live-mode" class="text-sm font-bold text-emerald-400 mt-0.5">--</div>
+        </div>
+        <div class="bg-gray-900/90 border border-gray-800 rounded-xl p-2.5 text-center">
+          <div class="text-[10px] text-gray-400">T° Salon remontée</div>
+          <div id="matter-live-amb" class="text-sm font-bold text-sky-400 mt-0.5 tabular-nums">-- °C</div>
+        </div>
+        <div class="bg-gray-900/90 border border-gray-800 rounded-xl p-2.5 text-center">
+          <div class="text-[10px] text-gray-400">Consigne cible</div>
+          <div id="matter-live-sp" class="text-sm font-bold text-orange-400 mt-0.5 tabular-nums">-- °C</div>
+        </div>
+      </div>
+
+      <!-- Zone QR Code + Instructions Nest Hub Max -->
+      <div
+        class="grid grid-cols-1 sm:grid-cols-5 gap-4 items-center bg-gray-900/60 border border-gray-800 rounded-xl p-4">
+        <!-- Colonne QR Code -->
+        <div class="sm:col-span-2 flex flex-col items-center justify-center space-y-2">
+          <div id="matter-qr-box"
+            class="w-44 h-44 bg-white rounded-xl p-2 flex items-center justify-center shadow-lg border-2 border-cyan-500/40 overflow-hidden">
+            <span class="text-xs text-gray-500 font-medium text-center px-2">Chargement du QR Code Matter...</span>
+          </div>
+          <div class="w-full text-center space-y-1">
+            <div class="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Code manuel (11 chiffres)
+            </div>
+            <div class="flex items-center justify-center gap-1.5">
+              <code id="matter-manual-code"
+                class="px-2.5 py-1 rounded-lg bg-gray-950 border border-cyan-800/70 text-cyan-300 font-mono text-sm font-bold tracking-wider select-all">---- --- ----</code>
+              <button type="button" onclick="copyMatterPairingCode()"
+                class="px-2 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-semibold border border-gray-700"
+                title="Copier le code à 11 chiffres">📋</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Colonne Guide d'appairage Google Home / Nest Hub Max -->
+        <div class="sm:col-span-3 space-y-2.5 text-xs text-gray-300">
+          <div class="font-bold text-cyan-300 flex items-center gap-1.5">
+            <span>📲</span><span>Appairer avec votre Google Nest Hub Max :</span>
+          </div>
+          <ol class="space-y-1.5 text-[11px] list-decimal pl-4 leading-relaxed text-gray-300">
+            <li>Connectez votre smartphone au <strong>même réseau Wi-Fi</strong> que votre <strong>Nest Hub
+                Max</strong>.</li>
+            <li>Ouvrez l'application <strong>Google Home</strong> → onglet <strong>Appareils</strong> → <strong>+
+                Ajouter</strong> → <strong>Appareil compatible Matter</strong>.</li>
+            <li>Scannez le <strong>QR Code</strong> ci-contre (ou choisissez <em>« Configurer sans code QR »</em> et
+              tapez le code à 11 chiffres).</li>
+            <li>Si Google affiche <em>« Appareil non certifié »</em>, appuyez sur <strong>Configurer quand
+                même</strong>.</li>
+          </ol>
+          <div
+            class="rounded-lg bg-emerald-950/40 border border-emerald-800/60 p-2.5 text-[11px] text-emerald-200 space-y-1">
+            <div class="font-bold text-emerald-300">🎙️ Commandes vocales disponibles :</div>
+            <div>• <em>« Ok Google, allume le poêle »</em> / <em>« éteins le poêle »</em></div>
+            <div>• <em>« Ok Google, mets le poêle sur 21 degrés »</em></div>
+            <div>• <em>« Ok Google, quelle est la température du poêle ? »</em></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="matter-fabrics-info"
+        class="text-[11px] text-gray-400 bg-gray-900/80 border border-gray-800 rounded-lg px-3 py-2">
+        Statut d'appairage : vérification en cours...
+      </div>
+
+      <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-800">
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="refreshMatterStatus(true)"
+            class="px-3 py-1.5 rounded-lg bg-sky-800/80 hover:bg-sky-700 text-white text-xs font-semibold transition">
+            🔄 Actualiser
+          </button>
+          <button type="button" onclick="confirmResetMatterPairing()"
+            class="px-3 py-1.5 rounded-lg bg-rose-950/80 hover:bg-rose-900 text-rose-200 border border-rose-800/70 text-xs font-semibold transition"
+            title="Efface les appairages existants et génère un nouveau QR Code Matter">
+            ♻️ Réinitialiser l'appairage
+          </button>
+        </div>
+        <button type="button" onclick="closeMatterModal()"
+          class="px-4 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-semibold">
+          Fermer
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODALE DÉDIÉE : INSPECTEUR DES 76 OFFSETS BRUTS DU POÊLE (POPUP) -->
+  <div id="offsets-modal"
+    class="fixed inset-0 z-50 hidden bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5">
+    <div
+      class="bg-gray-900 border border-cyan-700/60 rounded-2xl max-w-4xl w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Header -->
+      <div class="p-4 border-b border-gray-800 flex items-center justify-between bg-gray-950/80">
+        <div class="flex items-center gap-3">
+          <span class="text-2xl">📡</span>
+          <div>
+            <h3 class="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+              <span>Inspecteur des 76 Offsets Poêle (`raw_buffer`)</span>
+              <span id="modal-offsets-badge"
+                class="px-2 py-0.5 text-[11px] font-bold rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800">76
+                offsets</span>
+            </h3>
+            <p class="text-[11px] text-gray-400">Trame mémoire brute temps réel (Nobis A10 C Light Style Coax - Firmware
+              Micronova V018_1)</p>
+          </div>
+        </div>
+        <button onclick="closeOffsetsModal()"
+          class="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold flex items-center justify-center transition">✕</button>
+      </div>
+
+      <!-- Barre de recherche & Actualiser -->
+      <div class="p-3 bg-gray-950/50 border-b border-gray-800/80 flex flex-wrap items-center justify-between gap-2.5">
+        <div class="flex items-center gap-2 flex-1 min-w-[200px]">
+          <input id="offsets-modal-search" type="text"
+            placeholder="Rechercher par offset ou nom (ex: 103, temp, fan, pwr...)"
+            oninput="filterOffsetsModal(this.value)"
+            class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white w-full placeholder-gray-500 focus:outline-none focus:border-cyan-500" />
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="pollNow(); setTimeout(renderRawBufferInspector, 600);"
+            class="px-3 py-1.5 rounded-lg bg-cyan-800 hover:bg-cyan-700 text-cyan-200 text-xs font-semibold flex items-center gap-1.5 transition">
+            🔄 Actualiser Buffer
+          </button>
+        </div>
+      </div>
+
+      <!-- Grille des 76 offsets -->
+      <div class="p-4 overflow-y-auto flex-1 bg-gray-950/30">
+        <div id="modal-offsets-grid"
+          class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 text-xs font-mono tabular-nums">
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="p-3 border-t border-gray-800 bg-gray-950/80 flex items-center justify-between text-xs text-gray-400">
+        <span id="modal-offsets-count-label">76 offsets</span>
+        <button onclick="closeOffsetsModal()"
+          class="px-4 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-semibold transition">
+          Fermer
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODALE DÉDIÉE : POPUP DU PROGRAMME (P1..P4) -->
+  <div id="program-modal"
+    class="fixed inset-0 z-50 hidden bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5"
+    onclick="if(event.target===this) closeProgramModal()">
+    <div
+      class="bg-gray-900 border border-gray-700/80 rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto"
+      id="program-modal-container">
+      <!-- Rendu dynamiquement dans renderProgramModalContent(p) -->
+    </div>
+  </div>
+
+  <!-- CONTENEUR POUR RÉTRO-COMPATIBILITÉ (LES RÉGLAGES SONT DIRECTEMENT INTÉGRÉS DANS L'ONGLET PARAMÈTRES) -->
+  <div id="config-modal" class="hidden"></div>
+
+
+  <!-- BANDEAU D'ALERTE CRITIQUE DYNAMIQUE (SÉCURITÉS & ALARMES) -->
+  <div id="critical-alert-banner"
+    class="hidden bg-rose-950/95 border-b border-rose-600 px-4 py-2.5 text-xs text-rose-100 flex flex-wrap items-center justify-between gap-2 animate-pulse">
+    <div class="flex items-center gap-2 font-bold">
+      <span class="text-base">🚨</span>
+      <span id="critical-alert-text">ALERTE SÉCURITÉ ACTIVE SUR LE POÊLE</span>
+    </div>
+    <button id="critical-alert-btn" onclick="resetStoveAlarm()"
+      class="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold border border-rose-400 transition flex items-center gap-1.5 shadow">
+      <span>🛡️</span><span id="critical-alert-btn-text">Guide Réarmement (P3)</span>
+    </button>
+  </div>
+
+  <!-- MODALE FLEUR DU CYCLE DE VIE : DÉTAIL INTERACTIF DES 11 PHASES DU POÊLE -->
+  <div id="lifecycle-flower-modal"
+    class="fixed inset-0 z-50 hidden bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+    onclick="if(event.target===this){closeLifecycleFlowerModal();}">
+    <div class="card max-w-sm w-full p-5 space-y-4 border border-orange-700/60 shadow-2xl bg-gray-950 animate-fade-in">
+      <div class="flex items-center justify-between border-b border-gray-800 pb-2.5">
+        <div class="flex items-center gap-2">
+          <span class="text-lg">🔥</span>
+          <h3 class="text-sm font-bold text-white">Cycle de Vie & Phases du Poêle</h3>
+        </div>
+        <button type="button" onclick="closeLifecycleFlowerModal()"
+          class="w-7 h-7 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-xs font-bold flex items-center justify-center">✕</button>
+      </div>
+
+      <p class="text-[11px] text-gray-400 text-center">
+        Touchez ou survolez un pétale pour afficher le détail de la phase correspondante.
+      </p>
+
+      <div class="relative w-[240px] h-[240px] mx-auto flex items-center justify-center select-none">
+        <svg id="lifecycle-flower-svg" viewBox="-115 -115 230 230" onmouseleave="scheduleFlowerPetalRestore(600)"
+          class="w-full h-full overflow-visible drop-shadow-[0_8px_24px_rgba(0,0,0,0.7)]"
+          aria-label="Couronne des 11 phases du cycle de vie">
+          <circle cx="0" cy="0" r="102" fill="#090d16" stroke="#1e293b" stroke-width="1.2" stroke-dasharray="3 3" />
+          <circle cx="0" cy="0" r="35" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
+          <g id="lifecycle-flower-petals"></g>
+        </svg>
+
+        <!-- Centre informatif de la Fleur (icône et rappel) -->
+        <div
+          class="absolute w-[54px] h-[54px] rounded-full flex flex-col items-center justify-center bg-gray-950/90 border border-gray-800 text-orange-400 select-none pointer-events-none shadow-inner">
+          <span class="text-xl">🔥</span>
+        </div>
+      </div>
+
+      <!-- Bandeau détaillé de la phase active ou du pétale sélectionné -->
+      <div id="flower-status-banner"
+        class="bg-gray-900/90 border border-gray-800 border-l-4 rounded-xl px-3.5 py-2.5 flex flex-col gap-1 text-xs shadow-inner transition-all duration-200 min-h-[54px]">
+        <div class="flex items-center gap-2">
+          <span id="kpi-state-dot" class="w-2.5 h-2.5 rounded-full bg-gray-500 shrink-0"></span>
+          <strong id="hdr-state" class="font-bold text-orange-400 truncate text-sm">--</strong>
+          <span id="kpi-status-code" class="hidden">--</span>
+        </div>
+        <p id="flower-status-desc" class="text-[11px] text-gray-300 leading-snug"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODALE MÉTÉO EXTÉRIEURE & PRÉVISIONS OPEN-METEO (AROME) -->
+  <div id="weather-modal"
+    class="fixed inset-0 z-50 hidden bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4"
+    onclick="if(event.target===this){closeWeatherModal();}">
+    <div
+      class="card max-w-md w-full h-[95dvh] sm:h-auto sm:max-h-[90vh] flex flex-col justify-between p-4 sm:p-5 border border-sky-700/60 shadow-2xl bg-gray-950 animate-fade-in overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-gray-800 pb-2.5">
+        <div class="flex items-center gap-2">
+          <span class="text-lg">🌦️</span>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <h3 class="text-sm font-bold text-white leading-tight">Météo & DJU</h3>
+            </div>
+            <button type="button" onclick="closeWeatherModal(); openConfigModal('cfg-city');"
+              class="text-[11px] text-sky-400 hover:text-sky-300 font-medium text-left flex items-center gap-1 transition cursor-pointer"
+              title="Cliquer pour modifier la localité">
+              <span id="w-modal-city">--</span>
+              <span id="w-modal-coords" class="hidden"></span>
+            </button>
+          </div>
+        </div>
+        <button type="button" onclick="closeWeatherModal()"
+          class="w-7 h-7 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-xs font-bold flex items-center justify-center cursor-pointer">✕</button>
+      </div>
+
+      <!-- Grille des 4 relevés actuels -->
+      <div class="grid grid-cols-2 gap-2.5 text-xs my-2">
+        <div class="bg-gray-900/90 border border-gray-800 rounded-xl p-3 flex flex-col justify-between">
+          <span class="text-gray-400 text-[11px]">🌡️ Température ext.</span>
+          <span class="text-xl font-black text-sky-400 tabular-nums mt-1"><span id="w-modal-temp">--</span> °C</span>
+        </div>
+        <div class="bg-gray-900/90 border border-gray-800 rounded-xl p-3 flex flex-col justify-between">
+          <span class="text-gray-400 text-[11px]">💧 Humidité relative</span>
+          <span class="text-xl font-black text-cyan-300 tabular-nums mt-1"><span id="w-modal-hum">--</span> %</span>
+        </div>
+        <div class="bg-gray-900/90 border border-gray-800 rounded-xl p-3 flex flex-col justify-between">
+          <span class="text-gray-400 text-[11px]">💨 Vent (10m)</span>
+          <span class="text-xl font-black text-emerald-300 tabular-nums mt-1"><span id="w-modal-wind">--</span> <small
+              class="text-xs font-semibold text-gray-400">km/h</small></span>
+        </div>
+        <div onclick="showDjuInfoModal(event)"
+          class="bg-gray-900/90 border border-gray-800 hover:border-orange-500/60 rounded-xl p-3 flex flex-col justify-between relative cursor-pointer transition shadow-sm">
+          <div class="flex items-center justify-between">
+            <span class="text-gray-400 text-[11px] flex items-center gap-1.5 font-semibold">
+              <svg viewBox="0 0 24 24" class="w-4 h-4 text-orange-400 inline-block align-middle shrink-0" fill="none"
+                stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="9.5,6.5 17,20 2,20" fill="none" stroke="currentColor" stroke-width="2.2"
+                  stroke-linejoin="round" />
+                <circle cx="18.5" cy="6" r="2.2" fill="none" stroke="currentColor" stroke-width="2" />
+              </svg>
+              <span>DJU (Base 19°C)</span>
+            </span>
+            <span
+              class="text-[9px] text-orange-300/80 bg-orange-950 px-1.5 py-0.5 rounded border border-orange-800/60 font-mono">Δ°</span>
+          </div>
+
+          <div class="flex items-baseline justify-between mt-1">
+            <span class="text-lg font-black text-orange-400 tabular-nums"><span id="w-modal-dju">--</span></span>
+            <span class="text-[11px] text-gray-400 tabular-nums">~<b id="w-modal-est-kg" class="text-orange-300">--</b>
+              kg/j</span>
+          </div>
+
+          <button type="button" onclick="showDjuInfoModal(event)"
+            class="w-full mt-2 pt-1 border-t border-gray-800/80 flex items-center justify-between text-[10px] text-sky-400 hover:text-sky-300 font-medium cursor-pointer">
+            <span>💡 Cliquer pour l'explication complète</span>
+            <span>➔</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Prévisions recueillies sur 7 à 14 jours (remplit la hauteur restante) -->
+      <div class="space-y-1.5 flex-1 min-h-0 flex flex-col mt-1">
+        <div class="flex items-center justify-between text-[11px] text-gray-400 pb-1">
+          <span class="font-semibold text-gray-300">📅 Prévision <span id="w-modal-updated"
+              class="font-normal text-gray-400 text-[10px]"></span></span>
+          <span class="text-[10px] text-gray-500">Min / Moy / Max • Besoin Δ°</span>
+        </div>
+        <div id="w-modal-forecast-list"
+          class="bg-gray-900/80 border border-gray-800 rounded-xl divide-y divide-gray-800/80 flex-1 min-h-[160px] overflow-y-auto text-xs px-3 py-1">
+        </div>
+      </div>
+    </div>
+  </div>

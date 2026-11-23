@@ -1,0 +1,12 @@
+{
+  "name": "nobis-a10-matter-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pont Matter local officiel pour Poêle à granulés Nobis A10 (Google Home / Nest Hub Max / Apple Home / Alexa)",
+  "main": "bridge.mjs",
+  "dependencies": {
+    "@matter/main": "^0.12.6",
+    "qrcode": "^1.5.4"
+  }
+}

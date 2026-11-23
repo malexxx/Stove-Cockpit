@@ -1,0 +1,45 @@
+    <!-- =================================================================== -->
+    <!-- ONGLET 2 : PROGRAMMATION HEBDOMADAIRE (P1..P4) & FRISE 24H          -->
+    <!-- =================================================================== -->
+    <section id="tab-chrono" class="hidden space-y-6 pb-8 md:pb-0">
+      <div class="card p-5 space-y-4">
+        <div class="flex items-center justify-between gap-4 border-b border-gray-800 pb-3">
+          <h3 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+            <span>🕒</span><span>Programmation</span>
+          </h3>
+          <button id="ctl-chrono-enable-btn" onclick="toggleChronoWeek()"
+            title="Activer ou désactiver la programmation chrono (offset 33162)"
+            class="min-h-[32px] min-w-[68px] px-3.5 py-1 rounded-lg font-bold text-xs bg-gray-800 text-gray-400 border border-gray-700 transition-all cursor-pointer text-center shadow-sm">
+            OFF
+          </button>
+        </div>
+
+        <!-- FRISE CHRONOLOGIQUE VISUELLE 24H (GANTT P1..P4) -->
+        <div class="bg-gray-950/90 border border-gray-800 rounded-xl p-3.5 space-y-3">
+          <!-- Sélecteur de jour de la semaine étendu sur toute la largeur -->
+          <div class="w-full pb-2 border-b border-gray-800/80">
+            <div id="chrono-day-selector"
+              class="grid grid-cols-7 gap-1 sm:gap-1.5 w-full bg-gray-900/90 p-1 sm:p-1.5 rounded-lg border border-gray-800">
+              <!-- Rendu dynamiquement dans renderChronoPrograms() -->
+            </div>
+          </div>
+
+          <div class="relative pt-1 pb-4">
+            <!-- Marqueur vertical de l'heure actuelle -->
+            <div id="gantt-now-line" class="absolute top-0 bottom-3 w-0.5 bg-rose-500 z-20 pointer-events-none"
+              style="left: 50%">
+              <div class="w-2 h-2 rounded-full bg-rose-500 -ml-[3px] -mt-0.5"></div>
+            </div>
+            <!-- Conteneur des pistes P1..P4 -->
+            <div id="chrono-gantt-tracks" class="space-y-1.5"></div>
+            <!-- Échelle horaire 00h..24h -->
+            <div class="flex justify-between text-[10px] text-gray-500 font-mono pt-1.5 border-t border-gray-800/80">
+              <span>00h</span><span>03h</span><span>06h</span><span>09h</span><span>12h</span><span>15h</span><span>18h</span><span>21h</span><span>24h</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4 BOUTONS COMPACTS EN GRILLE 2X2 -->
+        <div class="grid grid-cols-2 gap-2.5 sm:gap-3" id="chrono-programs-grid"></div>
+      </div>
+    </section>

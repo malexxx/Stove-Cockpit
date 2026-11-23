@@ -1,0 +1,12 @@
+.git
+.github
+data
+backend/data
+frontend/node_modules
+frontend/dist
+frontend/android
+frontend/ios
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.venv

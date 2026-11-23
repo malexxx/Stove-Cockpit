@@ -1,0 +1,17 @@
+services:
+  stove-cockpit-server:
+    image: ghcr.io/malexxx/stove-cockpit-server:latest
+    container_name: stove-cockpit-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "5540:5540/udp"
+    volumes:
+      # Persistance obligatoire (SQLite, .secret.key, Matter).
+      - stove_data:/app/data
+    environment:
+      - TZ=Europe/Paris
+      - DB_PATH=/app/data/stove_cockpit.db
+
+volumes:
+  stove_data:
