@@ -1,6 +1,8 @@
 """Tests de validation de contrats d'API et détection d'anomalies via Schemathesis."""
 import unittest
-import schemathesis
+import pytest
+
+schemathesis = pytest.importorskip("schemathesis")
 from main import app
 from database import get_sys_db
 

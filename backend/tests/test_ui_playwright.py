@@ -2,8 +2,11 @@
 import mimetypes
 import os
 
-from playwright.sync_api import Page, sync_playwright
 import pytest
+
+_pw = pytest.importorskip("playwright.sync_api")
+Page = _pw.Page
+sync_playwright = _pw.sync_playwright
 
 from config import STATIC_DIR
 from routers.dashboard import render_spa_html
