@@ -22,17 +22,42 @@ jobs:
       - uses: actions/checkout@v7
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
+      - name: Resolve target registries
+        id: targets
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
+            echo "dockerhub_enabled=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "images<<EOF"
+              echo "${{ env.IMAGE_NAME }}"
+              echo "${DOCKERHUB_USERNAME,,}/stove-cockpit-server"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "dockerhub_enabled=false" >> "$GITHUB_OUTPUT"
+            echo "images=${{ env.IMAGE_NAME }}" >> "$GITHUB_OUTPUT"
+            echo "::notice::DOCKERHUB_USERNAME / DOCKERHUB_TOKEN non configurés — publication Docker Hub ignorée (GHCR uniquement)."
+          fi
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        if: steps.targets.outputs.dockerhub_enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_NAME }}
+          images: ${{ steps.targets.outputs.images }}
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}

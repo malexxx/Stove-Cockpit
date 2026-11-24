@@ -73,7 +73,7 @@ describe("ProviderManager", () => {
     });
 
     await pm.resolveActiveMode();
-    expect(pm.getFrontendVersion()).toBe("v0.0.2");
+    expect(pm.getFrontendVersion()).toBe("v0.0.3");
     expect(pm.getBackendVersion()).toBe("v2.9.0");
 
     const res = await pm.activateSilence(2);
@@ -83,5 +83,20 @@ describe("ProviderManager", () => {
     pm.prefs.app_mode = "demo";
     await pm.resolveActiveMode();
     expect(pm.getBackendVersion()).toBeNull();
+  });
+
+  it("bascule sur la géolocalisation IP en contexte HTTP non sécurisé ou sans GPS", async () => {
+    const pm = new ProviderManager();
+    pm.mode = "standalone";
+    const ipSpy = vi.spyOn(pm.weather, "geolocateByIp").mockResolvedValue({
+      lat: 48.8566,
+      lon: 2.3522,
+      city: "Paris",
+      source: "ip",
+    });
+
+    const pos = await pm.getCurrentPosition();
+    expect(ipSpy).toHaveBeenCalledTimes(1);
+    expect(pos).toEqual({ lat: 48.8566, lon: 2.3522, city: "Paris", source: "ip" });
   });
 });

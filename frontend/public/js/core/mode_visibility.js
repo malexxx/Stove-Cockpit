@@ -80,6 +80,7 @@ function applyModeVisibility() {
   }
   if (typeof syncVersionBadges === "function") syncVersionBadges();
   if (typeof renderTriArcCockpit === "function") renderTriArcCockpit();
+  if (typeof updateSettingsAccordionSummaries === "function") updateSettingsAccordionSummaries();
 
   // Résumé accordéon Option +
   const plusSum = document.getElementById("acc-sum-plus");

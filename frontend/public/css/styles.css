@@ -5,6 +5,10 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+header {
+  padding-top: calc(0.5rem + max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px))) !important;
+}
+
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
@@ -380,8 +384,8 @@ input[type="range"]::-webkit-slider-thumb {
 @media (max-width: 640px) {
   #tab-control:not(.hidden) {
     overflow-y: hidden;
-    height: calc(100dvh - 128px - env(safe-area-inset-bottom, 0px));
-    max-height: calc(100dvh - 128px - env(safe-area-inset-bottom, 0px));
+    height: calc(100dvh - 128px - max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px)) - max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px)));
+    max-height: calc(100dvh - 128px - max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px)) - max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px)));
     display: flex;
     flex-direction: column;
   }

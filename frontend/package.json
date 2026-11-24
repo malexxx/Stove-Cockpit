@@ -1,6 +1,6 @@
 {
   "name": "stove-cockpit-frontend",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "private": true,
   "type": "module",
   "description": "Stove Cockpit — Application universelle Micronova Agua IOT (Mode Autonome + Option Mode +)",
@@ -15,6 +15,7 @@
   "dependencies": {
     "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.6.2",
+    "@capacitor/geolocation": "^8.2.5",
     "@capacitor/network": "^8.0.1",
     "@capacitor/preferences": "^8.0.1"
   },

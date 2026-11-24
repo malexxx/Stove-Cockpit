@@ -57,6 +57,19 @@ function toggleSettingsAccordion(accId, forceOpen = false) {
   }
 }
 
+function _isSettingsAccordionAllowedInMode(item) {
+  const appMode = window.stoveProvider ? window.stoveProvider.getMode() : "standalone";
+  const isContainer = appMode === "container";
+  const req = item.dataset.requires || "";
+  if (req === "container" && !isContainer) return false;
+  if (req === "standalone-only" && isContainer) return false;
+  if (item.dataset.accId === "zones") {
+    const caps = typeof getActiveCapabilities === "function" ? getActiveCapabilities() : null;
+    if (caps && Array.isArray(caps.ducts) && caps.ducts.length === 0) return false;
+  }
+  return true;
+}
+
 function filterSettingsAccordions(query) {
   const q = String(query || "").trim().toLowerCase();
   const clearBtn = document.getElementById("settings-acc-search-clear");
@@ -67,11 +80,13 @@ function filterSettingsAccordions(query) {
   let firstVisibleId = null;
 
   items.forEach((item) => {
+    const allowed = _isSettingsAccordionAllowedInMode(item);
     const kw = (item.dataset.keywords || "").toLowerCase();
     const txt = (item.textContent || "").toLowerCase();
     const match = !q || kw.includes(q) || txt.includes(q);
-    item.classList.toggle("hidden", !match);
-    if (match) {
+    const visible = allowed && match;
+    item.classList.toggle("hidden", !visible);
+    if (visible) {
       visibleCount++;
       if (!firstVisibleId) firstVisibleId = item.dataset.accId;
     }
@@ -137,11 +152,7 @@ function resetDuctNamesDefault() {
   updateDuctChevronPreview();
 }
 
-function locateWeatherFromBrowser() {
-  if (!navigator.geolocation) {
-    showToast("La géolocalisation n'est pas supportée par ce navigateur.", true);
-    return;
-  }
+async function locateWeatherFromBrowser() {
   const btn = document.getElementById("btn-geolocate-weather");
   const origHtml = btn ? btn.innerHTML : "";
   if (btn) {
@@ -156,69 +167,92 @@ function locateWeatherFromBrowser() {
     }
   };
 
-  navigator.geolocation.getCurrentPosition(
-    async (pos) => {
-      const lat = pos.coords.latitude;
-      const lon = pos.coords.longitude;
-      const latEl = document.getElementById("cfg-lat");
-      const lonEl = document.getElementById("cfg-lon");
-      const cityEl = document.getElementById("cfg-city");
+  try {
+    let coords;
+    if (window.stoveProvider && typeof window.stoveProvider.getCurrentPosition === "function") {
+      coords = await window.stoveProvider.getCurrentPosition();
+    } else if (navigator.geolocation) {
+      const pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: false,
+          timeout: 10000,
+          maximumAge: 300000,
+        });
+      });
+      coords = { lat: pos.coords.latitude, lon: pos.coords.longitude, source: "gps" };
+    } else {
+      showToast("La géolocalisation n'est pas supportée par ce navigateur.", true);
+      restoreBtn();
+      return;
+    }
 
-      if (latEl) latEl.value = lat.toFixed(4);
-      if (lonEl) lonEl.value = lon.toFixed(4);
-      isSettingsFormDirty = true;
+    const lat = Number(coords.lat);
+    const lon = Number(coords.lon);
+    const latEl = document.getElementById("cfg-lat");
+    const lonEl = document.getElementById("cfg-lon");
+    const cityEl = document.getElementById("cfg-city");
 
-      let resolvedCity = "";
-      try {
-        if (window.stoveProvider && typeof window.stoveProvider.reverseGeocode === "function") {
-          const data = await window.stoveProvider.reverseGeocode(lat, lon);
-          if (data && data.city) {
-            resolvedCity = data.city;
-            if (cityEl) cityEl.value = resolvedCity;
-          }
+    if (latEl) latEl.value = lat.toFixed(4);
+    if (lonEl) lonEl.value = lon.toFixed(4);
+    isSettingsFormDirty = true;
+
+    let resolvedCity = String(coords.city || "").trim();
+    try {
+      if (window.stoveProvider && typeof window.stoveProvider.reverseGeocode === "function") {
+        const data = await window.stoveProvider.reverseGeocode(lat, lon);
+        if (data && data.city) {
+          resolvedCity = data.city;
         }
-      } catch (e) {
-        // Repli silencieux : coordonnées GPS déjà renseignées
       }
+    } catch (e) {
+      // Repli silencieux : coordonnées GPS déjà renseignées
+    }
+    if (resolvedCity && cityEl) cityEl.value = resolvedCity;
 
-      updateSettingsAccordionSummaries();
-      restoreBtn();
-      if (resolvedCity) {
-        showToast(`📍 Position détectée : ${resolvedCity} — cliquez sur Enregistrer.`);
-      } else {
-        showToast(`📍 Coordonnées détectées (${lat.toFixed(4)}, ${lon.toFixed(4)}) — cliquez sur Enregistrer.`);
-      }
-    },
-    (err) => {
-      restoreBtn();
-      let msg = "Impossible d'obtenir votre position.";
-      if (err && err.code === 1) {
-        msg = "Permission de géolocalisation refusée dans le navigateur (HTTPS ou localhost requis).";
-      } else if (err && err.code === 2) {
-        msg = "Position GPS indisponible pour le moment.";
-      } else if (err && err.code === 3) {
-        msg = "Délai d'attente dépassé pour la géolocalisation.";
-      }
-      showToast(msg, true);
-    },
-    { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
-  );
+    updateSettingsAccordionSummaries();
+    restoreBtn();
+    const prefix = coords.source === "ip" ? "📍 Position approximative (IP)" : "📍 Position détectée";
+    if (resolvedCity) {
+      showToast(`${prefix} : ${resolvedCity} — cliquez sur Enregistrer.`);
+    } else {
+      showToast(`${prefix} (${lat.toFixed(4)}, ${lon.toFixed(4)}) — cliquez sur Enregistrer.`);
+    }
+  } catch (err) {
+    restoreBtn();
+    let msg = "Impossible d'obtenir votre position.";
+    if (err && err.code === 1) {
+      msg = "Permission de géolocalisation refusée (autorisez la localisation dans les réglages).";
+    } else if (err && err.code === 2) {
+      msg = "Position GPS indisponible pour le moment.";
+    } else if (err && err.code === 3) {
+      msg = "Délai d'attente dépassé pour la géolocalisation.";
+    }
+    showToast(msg, true);
+  }
 }
 
 function updateSettingsAccordionSummaries() {
   // 1. Zones SX / DX
   updateDuctChevronPreview();
 
-  // 2. Liaison Poêle
+  // 2. Liaison Poêle (conditionné au mode actif)
+  const appMode = window.stoveProvider ? window.stoveProvider.getMode() : "standalone";
   const modeEl = document.getElementById("cfg-mode");
   const intEl = document.getElementById("cfg-interval");
-  const modeVal = modeEl ? modeEl.value : (currentSettings.comm_mode || "agua_cloud");
-  const modeTxt = modeVal === "local_gateway" ? "🔌 UART ESP32" : (modeVal === "simulation" ? "🧪 Simulation" : "☁️ Agua Cloud");
   const intVal = intEl && intEl.value ? intEl.value : (currentSettings.poll_interval_s || "120");
+  let modeTxt = "☁️ Agua Cloud";
+  if (appMode === "demo") {
+    modeTxt = "🧪 Mode Démo";
+  } else if (appMode === "container") {
+    const modeVal = modeEl ? modeEl.value : (currentSettings.comm_mode || "agua_cloud");
+    modeTxt = modeVal === "local_gateway" ? "🔌 UART ESP32" : (modeVal === "simulation" ? "🧪 Simulation" : "☁️ Agua Cloud");
+  } else if (appMode === "fallback") {
+    modeTxt = "📶 Repli Cloud";
+  }
   const sumConn = document.getElementById("acc-sum-conn");
   if (sumConn) sumConn.textContent = `${modeTxt} • ${intVal}s`;
 
-  // 3. Matter & Webhook
+  // 3. Matter & Webhook (Mode +)
   const mEnEl = document.getElementById("cfg-matter-enabled");
   const mPortEl = document.getElementById("cfg-matter-port");
   const whEl = document.getElementById("cfg-webhook");
@@ -228,15 +262,29 @@ function updateSettingsAccordionSummaries() {
   const sumDom = document.getElementById("acc-sum-domotic");
   if (sumDom) sumDom.textContent = `${mEn ? `✅ Matter Actif (${mPort})` : "❌ Matter OFF"} • ${hasWh ? "🔔 Webhook actif" : "🔕 Sans webhook"}`;
 
-  // 4. Granulés & Météo
+  // 4. Gestion des Granulés (Mode + uniquement)
   const bagsEl = document.getElementById("cfg-bags-stock");
   const priceEl = document.getElementById("cfg-bag-price");
-  const cityEl = document.getElementById("cfg-city");
+  const hopperEl = document.getElementById("cfg-hopper-capacity");
   const bags = (bagsEl && bagsEl.value !== "") ? bagsEl.value : (currentSettings.pellet_bags_stock ?? "40");
   const price = (priceEl && priceEl.value !== "") ? priceEl.value : (currentSettings.pellet_bag_price_eur || "4.80");
+  const hopper = (hopperEl && hopperEl.value !== "") ? hopperEl.value : (currentSettings.hopper_capacity_kg || "30");
+  const sumPellets = document.getElementById("acc-sum-pellets");
+  if (sumPellets) sumPellets.textContent = `${bags} sacs (${price} €) • Trémie ${hopper} kg`;
+
+  // 4B. Station Météo Extérieure (tous modes)
+  const cityEl = document.getElementById("cfg-city");
+  const latEl = document.getElementById("cfg-lat");
+  const lonEl = document.getElementById("cfg-lon");
   const city = ((cityEl && cityEl.value) || currentSettings.weather_city || "--").split("(")[0].trim();
-  const sumHome = document.getElementById("acc-sum-home");
-  if (sumHome) sumHome.textContent = `${bags} sacs (${price} €) • ${city}`;
+  const lat = (latEl && latEl.value) ? latEl.value.trim() : "";
+  const lon = (lonEl && lonEl.value) ? lonEl.value.trim() : "";
+  const sumWeather = document.getElementById("acc-sum-weather");
+  if (sumWeather) {
+    sumWeather.textContent = (lat && lon)
+      ? `${city} (${lat}, ${lon}) • Open-Meteo Arome`
+      : `${city} • Open-Meteo Arome`;
+  }
 
   // 5. Tarages IA
   const tPel = getRegVal("trim_pellet_pct", 0);
@@ -246,7 +294,7 @@ function updateSettingsAccordionSummaries() {
 
   // 6. Système
   const rtcEl = document.getElementById("inst-clock-val");
-  const frontVer = typeof getFrontendVersionLabel === "function" ? getFrontendVersionLabel() : "v0.0.2";
+  const frontVer = typeof getFrontendVersionLabel === "function" ? getFrontendVersionLabel() : "v0.0.3";
   const backVer = typeof getBackendVersionLabel === "function" ? getBackendVersionLabel() : "";
   const rtc = rtcEl ? rtcEl.textContent.trim() : "--:--";
   const verSummary = backVer ? `Front ${frontVer} • Back ${backVer}` : `Front ${frontVer}`;

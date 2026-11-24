@@ -1,6 +1,7 @@
 // Orchestrateur unifié des providers : Mode Autonome (AguaDirect) / Mode « + » (Conteneur) / Repli Cloud / Démo.
 import { App } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
+import { Geolocation } from "@capacitor/geolocation";
 import { Network } from "@capacitor/network";
 import { decodeBufferToTelemetry } from "../micronova/register_engine.js";
 import { loadAllPrefs, savePrefsPatch } from "../storage/secure_prefs.js";
@@ -368,6 +369,70 @@ export class ProviderManager {
     }
     const city = await this.weather.reverseGeocode(lat, lon);
     return { status: "ok", city, lat: String(lat), lon: String(lon) };
+  }
+
+  /**
+   * Obtient la position GPS (Capacitor natif sur Android/iOS, navigator.geolocation sur Web sécurisé)
+   * avec repli automatique par géolocalisation IP en contexte HTTP LAN ou si le GPS échoue.
+   */
+  async getCurrentPosition() {
+    const isNative = typeof Capacitor !== "undefined"
+      && typeof Capacitor.isNativePlatform === "function"
+      && Capacitor.isNativePlatform();
+    const opts = { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 };
+    let lastError = null;
+
+    if (isNative) {
+      try {
+        const perm = await Geolocation.checkPermissions();
+        if (perm?.location !== "granted" && perm?.coarseLocation !== "granted") {
+          const req = await Geolocation.requestPermissions();
+          if (req?.location !== "granted" && req?.coarseLocation !== "granted") {
+            const err = new Error("Permission de géolocalisation refusée sur l'appareil.");
+            err.code = 1;
+            throw err;
+          }
+        }
+        const pos = await Geolocation.getCurrentPosition(opts);
+        return { lat: pos.coords.latitude, lon: pos.coords.longitude, source: "gps" };
+      } catch (err) {
+        lastError = err;
+      }
+    } else if (typeof navigator !== "undefined" && navigator.geolocation && (typeof window === "undefined" || window.isSecureContext !== false)) {
+      try {
+        const pos = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, opts);
+        });
+        return { lat: pos.coords.latitude, lon: pos.coords.longitude, source: "gps" };
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    // Repli par IP publique (utile en HTTP LAN non sécurisé ou sans capteur GPS)
+    if (this.mode === "container") {
+      try {
+        const r = await this.container.request("/api/geolocate-ip");
+        if (r.ok) {
+          const data = await r.json();
+          const lat = Number(data?.lat);
+          const lon = Number(data?.lon);
+          if (Number.isFinite(lat) && Number.isFinite(lon)) {
+            return { lat, lon, city: String(data?.city || "").trim(), source: "ip" };
+          }
+        }
+      } catch {
+        // Repli silencieux sur le client météo direct
+      }
+    }
+
+    const ipPos = await this.weather.geolocateByIp();
+    if (ipPos) return ipPos;
+
+    if (lastError) throw lastError;
+    const err = new Error("Géolocalisation indisponible.");
+    err.code = 2;
+    throw err;
   }
 
   startLiveUpdates(onState) {

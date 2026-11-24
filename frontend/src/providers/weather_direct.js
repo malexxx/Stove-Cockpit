@@ -100,4 +100,48 @@ export class WeatherDirectClient {
     }
     return "";
   }
+
+  /** Estime la position approximative via IP publique (repli sans GPS / HTTP LAN). */
+  async geolocateByIp() {
+    const endpoints = [
+      {
+        url: "https://get.geojs.io/v1/ip/geo.json",
+        parse: (d) => ({
+          lat: Number(d?.latitude),
+          lon: Number(d?.longitude),
+          city: String(d?.city || "").trim(),
+        }),
+      },
+      {
+        url: "https://ipwho.is/",
+        parse: (d) => (d && d.success !== false ? {
+          lat: Number(d?.latitude),
+          lon: Number(d?.longitude),
+          city: String(d?.city || "").trim(),
+        } : null),
+      },
+    ];
+
+    for (const ep of endpoints) {
+      const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const timer = controller ? setTimeout(() => controller.abort(), 5000) : null;
+      try {
+        const resp = await fetch(ep.url, {
+          headers: { Accept: "application/json" },
+          ...(controller ? { signal: controller.signal } : {}),
+        });
+        if (!resp.ok) continue;
+        const parsed = ep.parse(await resp.json());
+        if (parsed && Number.isFinite(parsed.lat) && Number.isFinite(parsed.lon)
+            && Math.abs(parsed.lat) <= 90 && Math.abs(parsed.lon) <= 180) {
+          return { ...parsed, source: "ip" };
+        }
+      } catch {
+        // Repli silencieux sur le fournisseur suivant
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
+    return null;
+  }
 }

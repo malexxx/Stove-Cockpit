@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "../../../../Nobis_App"
+		},
+		{
+			"path": "../../../../Nobis_Cockpit"
+		},
+		{
+			"path": "../../../../Stove_Cockpit"
+		},
+		{
+			"path": "../../.."
+		}
+	],
+	"settings": {}
+}

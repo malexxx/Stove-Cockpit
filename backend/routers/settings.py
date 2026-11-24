@@ -353,3 +353,36 @@ async def api_reverse_geocode(lat: float, lon: float):
         "lat": f"{lat:.4f}",
         "lon": f"{lon:.4f}",
     }
+
+
+@router.get("/geolocate-ip")
+async def api_geolocate_ip():
+    """Estime la position approximative via l'IP publique (repli HTTP LAN sans GPS)."""
+    providers = (
+        ("https://get.geojs.io/v1/ip/geo.json", lambda d: (d.get("latitude"), d.get("longitude"), d.get("city") or "")),
+        ("https://ipwho.is/", lambda d: (d.get("latitude"), d.get("longitude"), d.get("city") or "") if d.get("success", True) else None),
+    )
+    try:
+        async with _clients_pkg.borrow_http_client(timeout=5.0) as client:
+            for url, extract in providers:
+                try:
+                    resp = await client.get(url)
+                    if resp.status_code != 200:
+                        continue
+                    extracted = extract(resp.json())
+                    if not extracted:
+                        continue
+                    lat, lon, city = float(extracted[0]), float(extracted[1]), str(extracted[2]).strip()
+                    if -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0:
+                        return {
+                            "status": "ok",
+                            "lat": f"{lat:.4f}",
+                            "lon": f"{lon:.4f}",
+                            "city": city,
+                            "source": "ip",
+                        }
+                except Exception:
+                    continue
+    except Exception as exc:
+        logger.debug("Géolocalisation IP indisponible : %s", exc)
+    raise HTTPException(status_code=503, detail="Géolocalisation IP indisponible.")
