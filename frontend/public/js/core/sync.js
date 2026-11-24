@@ -51,8 +51,12 @@ function applyDashboardState(data, updateSeries = true) {
   if (data.capabilities) {
     window.currentCapabilities = data.capabilities;
   }
-  if (data.silence_mode) {
-    silenceModeState = data.silence_mode;
+  if (window.stoveProvider?.isContainerActive?.()) {
+    if (data.silence_mode) {
+      silenceModeState = data.silence_mode;
+    }
+  } else {
+    silenceModeState = { active: false, remaining_seconds: 0, end_epoch: 0, duration_hours: 2.0 };
   }
   if (data.pellet_quality) {
     latestData.pellet_quality = data.pellet_quality;
@@ -72,11 +76,12 @@ function applyDashboardState(data, updateSeries = true) {
 
   const dbEl = document.getElementById("hdr-db");
   if (dbEl) dbEl.textContent = activeDbFile;
-  const dockerVersion = data.docker_version || (currentSettings && currentSettings.docker_version) || "v0.0.1";
-  const cfgDockerVerEl = document.getElementById("cfg-docker-version");
-  if (cfgDockerVerEl) cfgDockerVerEl.textContent = dockerVersion;
-  const hdrDockerBadgeEl = document.getElementById("hdr-docker-version-badge");
-  if (hdrDockerBadgeEl) hdrDockerBadgeEl.textContent = `🐳 Docker ${dockerVersion}`;
+  const rawBackendVer = window.stoveProvider?.isContainerActive?.()
+    ? (data.backend_version || data.docker_version || data.version || (currentSettings && (currentSettings.backend_version || currentSettings.docker_version)) || null)
+    : null;
+  if (typeof syncVersionBadges === "function") {
+    syncVersionBadges(rawBackendVer);
+  }
   if (typeof applyModeVisibility === "function") applyModeVisibility();
   document.getElementById("hdr-state").textContent = latestData.status_label || "--";
   updateStatusIndicatorAndAlerts();

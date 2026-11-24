@@ -123,6 +123,46 @@ async def serve_service_worker():
     raise HTTPException(status_code=404, detail="sw.js introuvable")
 
 
+_PWA_ROOT_ICONS: dict[str, str] = {
+    "icon.svg": "image/svg+xml",
+    "icon-192.png": "image/png",
+    "icon-512.png": "image/png",
+    "icon-maskable-192.png": "image/png",
+    "icon-maskable-512.png": "image/png",
+    "apple-touch-icon.png": "image/png",
+}
+
+
+async def _serve_pwa_icon(filename: str) -> FileResponse:
+    """Sert une icône PWA autorisée à la racine depuis FRONTEND_DIST_DIR ou STATIC_DIR."""
+    media_type = _PWA_ROOT_ICONS[filename]
+    for base_dir in (FRONTEND_DIST_DIR, STATIC_DIR):
+        icon_file = os.path.join(base_dir, filename)
+        if await asyncio.to_thread(os.path.isfile, icon_file):
+            return FileResponse(
+                icon_file,
+                media_type=media_type,
+                headers={"Cache-Control": "public, max-age=86400"},
+            )
+    raise HTTPException(status_code=404, detail=f"{filename} introuvable")
+
+
+def _register_pwa_icon_routes() -> None:
+    for icon_name in _PWA_ROOT_ICONS:
+        async def _endpoint(_name: str = icon_name) -> FileResponse:
+            return await _serve_pwa_icon(_name)
+
+        router.add_api_route(
+            f"/{icon_name}",
+            _endpoint,
+            methods=["GET", "HEAD"],
+            include_in_schema=False,
+        )
+
+
+_register_pwa_icon_routes()
+
+
 @router.get("/health")
 async def healthcheck():
     """Point de contrôle de santé (healthcheck) pour Docker et les sondes de disponibilité."""
@@ -131,6 +171,7 @@ async def healthcheck():
     return {
         "status": "healthy",
         "version": APP_VERSION,
+        "backend_version": APP_VERSION,
         "docker_version": DOCKER_VERSION,
         "active_release_id": os.environ.get("NOBIS_ACTIVE_RELEASE_ID", "").strip(),
         "self_update_supported": os.environ.get("NOBIS_SUPERVISOR_ENABLED") == "1",
@@ -224,6 +265,7 @@ def _load_latest_snapshot() -> dict:
     pub_settings = get_public_settings_dict()
     return {
         "version": APP_VERSION,
+        "backend_version": APP_VERSION,
         "docker_version": DOCKER_VERSION,
         "active_mode": active_mode,
         "active_db_file": os.path.basename(MODE_DB_PATHS.get(active_mode, MODE_DB_PATHS["simulation"])),
@@ -282,6 +324,7 @@ def _load_dashboard_snapshot(range_key: str) -> dict:
     pub_settings = get_public_settings_dict()
     return {
         "version": APP_VERSION,
+        "backend_version": APP_VERSION,
         "docker_version": DOCKER_VERSION,
         "active_mode": active_mode,
         "active_db_file": os.path.basename(MODE_DB_PATHS.get(active_mode, MODE_DB_PATHS["simulation"])),

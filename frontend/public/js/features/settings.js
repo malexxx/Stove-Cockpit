@@ -246,9 +246,10 @@ function updateSettingsAccordionSummaries() {
 
   // 6. Système
   const rtcEl = document.getElementById("inst-clock-val");
-  const verEl = document.getElementById("cfg-docker-version");
+  const frontVer = typeof getFrontendVersionLabel === "function" ? getFrontendVersionLabel() : "v0.0.1";
+  const backVer = typeof getBackendVersionLabel === "function" ? getBackendVersionLabel() : "";
   const rtc = rtcEl ? rtcEl.textContent.trim() : "--:--";
-  const ver = verEl ? verEl.textContent.trim() : "v2.4.0";
+  const verSummary = backVer ? `Front ${frontVer} • Back ${backVer}` : `Front ${frontVer}`;
   const sumSys = document.getElementById("acc-sum-system");
   if (sumSys) {
     const warnSuffix = (currentStorageStatus && currentStorageStatus.persistent === false)
@@ -257,7 +258,7 @@ function updateSettingsAccordionSummaries() {
     const updSuffix = (currentUpdateStatus && currentUpdateStatus.last_check && currentUpdateStatus.last_check.update_available)
       ? " • ⬆️ MAJ dispo"
       : "";
-    sumSys.textContent = `RTC ${rtc} • Docker ${ver}${warnSuffix}${updSuffix}`;
+    sumSys.textContent = `RTC ${rtc} • ${verSummary}${warnSuffix}${updSuffix}`;
   }
 
   // 7. Expert
@@ -399,8 +400,8 @@ async function saveSettings() {
     payload.agua_api_url = isCustomBrand ? (document.getElementById("cfg-agua-api-url")?.value?.trim() || "") : (preset.api_url || "");
     payload.agua_customer_code = isCustomBrand ? (document.getElementById("cfg-agua-customer-code")?.value?.trim() || "") : (preset.customer_code || "");
     payload.agua_brand_id = isCustomBrand ? (document.getElementById("cfg-agua-brand-id")?.value?.trim() || "1") : (preset.brand_id || "1");
-    payload.agua_brand_header = preset.brand || "";
-    payload.agua_login_api_url = preset.login_api_url || "";
+    payload.agua_brand_header = isCustomBrand ? (document.getElementById("cfg-agua-brand-header")?.value?.trim() || "") : (preset.brand || "");
+    payload.agua_login_api_url = isCustomBrand ? (document.getElementById("cfg-agua-login-api-url")?.value?.trim() || "") : (preset.login_api_url || "");
     payload.agua_email = document.getElementById("cfg-email").value;
     payload.agua_password = document.getElementById("cfg-pass").value;
   } else if (mode === "local_gateway") {
@@ -480,8 +481,8 @@ async function testConnection() {
     payload.agua_api_url = isCustomBrand ? (document.getElementById("cfg-agua-api-url")?.value?.trim() || "") : (preset.api_url || "");
     payload.agua_customer_code = isCustomBrand ? (document.getElementById("cfg-agua-customer-code")?.value?.trim() || "") : (preset.customer_code || "");
     payload.agua_brand_id = isCustomBrand ? (document.getElementById("cfg-agua-brand-id")?.value?.trim() || "1") : (preset.brand_id || "1");
-    payload.agua_brand_header = preset.brand || "";
-    payload.agua_login_api_url = preset.login_api_url || "";
+    payload.agua_brand_header = isCustomBrand ? (document.getElementById("cfg-agua-brand-header")?.value?.trim() || "") : (preset.brand || "");
+    payload.agua_login_api_url = isCustomBrand ? (document.getElementById("cfg-agua-login-api-url")?.value?.trim() || "") : (preset.login_api_url || "");
     payload.agua_email = document.getElementById("cfg-email").value;
     payload.agua_password = document.getElementById("cfg-pass").value;
   } else if (mode === "local_gateway") {

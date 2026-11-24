@@ -50,4 +50,31 @@ describe("AguaDirectProvider", () => {
     const client = new AguaDirectProvider(async () => ({ status: 200, ok: true, data: {} }));
     await expect(client.loginAndDiscover({ agua_email: "", agua_password: "" })).rejects.toThrow();
   });
+
+  it("résout automatiquement l'API correspondant à chaque marque et supporte custom", () => {
+    const client = new AguaDirectProvider();
+    const mcz = client.resolveBrandConfig({
+      agua_brand: "easy_connect",
+      agua_api_url: "https://nobis.agua-iot.com",
+      agua_customer_code: "700700",
+    });
+    expect(mcz.apiUrl).toBe("https://remote.mcz.it");
+    expect(mcz.customerCode).toBe("354924");
+
+    const sup = client.resolveBrandConfig({ agua_brand: "mysuperior" });
+    expect(sup.apiUrl).toBe("https://piazzetta.agua-iot.com");
+    expect(sup.brandId).toBe("2");
+    expect(sup.brandHeader).toBe("superior");
+    expect(sup.loginApiUrl).toContain("piazzetta-iot.app2cloud.it");
+
+    const custom = client.resolveBrandConfig({
+      agua_brand: "custom",
+      agua_api_url: "https://custom.example.com/",
+      agua_customer_code: "112233",
+      agua_brand_id: "3",
+    });
+    expect(custom.apiUrl).toBe("https://custom.example.com");
+    expect(custom.customerCode).toBe("112233");
+    expect(custom.brandId).toBe("3");
+  });
 });

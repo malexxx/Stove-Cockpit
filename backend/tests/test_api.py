@@ -341,3 +341,65 @@ class TestAPIEndpoints(SimulationApiTestCase):
         self.assertEqual(rec_on["power_actual"], 8)
 
         self.client.post("/api/command", json={"reg_key": "fun_pwf_set", "value": 0.0, "offset": 33154})
+
+    def test_pwa_manifest_and_root_icons(self):
+        """Vérifie que /manifest.json et toutes les icônes PWA à la racine répondent en HTTP 200."""
+        expected = {
+            "/manifest.json": "application/manifest+json",
+            "/icon.svg": "image/svg+xml",
+            "/icon-192.png": "image/png",
+            "/icon-512.png": "image/png",
+            "/icon-maskable-192.png": "image/png",
+            "/icon-maskable-512.png": "image/png",
+            "/apple-touch-icon.png": "image/png",
+        }
+        for path, ctype in expected.items():
+            resp = self.client.get(path)
+            self.assertEqual(resp.status_code, 200, f"Échec GET {path}")
+            self.assertIn(ctype, resp.headers.get("content-type", ""))
+            self.assertGreater(len(resp.content), 0)
+
+    def test_brand_api_resolution_and_settings_sync(self):
+        """Vérifie la résolution des URL/codes API par marque Agua IOT et leur synchronisation dans /api/settings."""
+        from clients import AguaCloudClient
+
+        cli = AguaCloudClient()
+        cfg_rav = cli.resolve_brand_config({
+            "agua_brand": "ravelli",
+            "agua_api_url": "https://nobis.agua-iot.com",
+            "agua_customer_code": "700700",
+        })
+        self.assertEqual(cfg_rav["api_url"], "https://ravelli.agua-iot.com")
+        self.assertEqual(cfg_rav["customer_code"], "953712")
+
+        cfg_sup = cli.resolve_brand_config({"agua_brand": "mysuperior"})
+        self.assertEqual(cfg_sup["api_url"], "https://piazzetta.agua-iot.com")
+        self.assertEqual(cfg_sup["brand_id"], "2")
+        self.assertEqual(cfg_sup["brand_header"], "superior")
+        self.assertIn("piazzetta-iot.app2cloud.it", cfg_sup["login_api_url"])
+
+        cfg_custom = cli.resolve_brand_config({
+            "agua_brand": "custom",
+            "agua_api_url": "https://custom-stove.example.com/",
+            "agua_customer_code": "987654",
+            "agua_brand_id": "4",
+        })
+        self.assertEqual(cfg_custom["api_url"], "https://custom-stove.example.com")
+        self.assertEqual(cfg_custom["customer_code"], "987654")
+        self.assertEqual(cfg_custom["brand_id"], "4")
+
+        resp_brands = self.client.get("/api/brands")
+        self.assertEqual(resp_brands.status_code, 200)
+        brands = resp_brands.json()["brands"]
+        self.assertEqual(len(brands), 36)
+        self.assertTrue(all(b.get("id") and b.get("name") for b in brands))
+
+        resp_save = self.client.post("/api/settings", json={"agua_brand": "easy_connect"})
+        self.assertEqual(resp_save.status_code, 200)
+        saved = resp_save.json()["settings"]
+        self.assertEqual(saved["agua_brand"], "easy_connect")
+        self.assertEqual(saved["agua_api_url"], "https://remote.mcz.it")
+        self.assertEqual(saved["agua_customer_code"], "354924")
+
+        # Restauration marque par défaut du test
+        self.client.post("/api/settings", json={"agua_brand": "nobis"})

@@ -159,6 +159,9 @@
                 <select id="cfg-agua-brand" onchange="onSettingsBrandChange()"
                   class="w-full bg-gray-900 border border-gray-700 focus:border-amber-500 rounded-lg px-3 py-2 text-xs text-white outline-none"></select>
               </div>
+              <div id="cfg-brand-api-preview"
+                class="hidden sm:col-span-2 rounded-lg bg-gray-900/75 border border-amber-800/40 px-3 py-2 text-[11px] text-gray-300 space-y-1">
+              </div>
               <div id="cfg-custom-brand-box" class="hidden sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-gray-900/70 border border-gray-800 rounded-lg p-2.5">
                 <div>
                   <label for="cfg-agua-api-url" class="text-[11px] text-gray-400 block mb-1">URL API Agua IOT</label>
@@ -173,6 +176,16 @@
                 <div>
                   <label for="cfg-agua-brand-id" class="text-[11px] text-gray-400 block mb-1">Brand ID</label>
                   <input id="cfg-agua-brand-id" type="text" placeholder="1"
+                    class="w-full bg-gray-950 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono outline-none" />
+                </div>
+                <div class="sm:col-span-2">
+                  <label for="cfg-agua-login-api-url" class="text-[11px] text-gray-400 block mb-1">Login API URL (optionnel / pont)</label>
+                  <input id="cfg-agua-login-api-url" type="url" placeholder="https://.../api/bridge/endpoint/"
+                    class="w-full bg-gray-950 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono outline-none" />
+                </div>
+                <div>
+                  <label for="cfg-agua-brand-header" class="text-[11px] text-gray-400 block mb-1">En-tête brand (optionnel)</label>
+                  <input id="cfg-agua-brand-header" type="text" placeholder="ex: superior"
                     class="w-full bg-gray-950 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono outline-none" />
                 </div>
               </div>

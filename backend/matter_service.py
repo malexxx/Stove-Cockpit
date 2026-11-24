@@ -6,6 +6,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import time
 from typing import Any
 
 logger = logging.getLogger("nobis.matter")
@@ -22,6 +23,8 @@ MATTER_BRIDGE_DIR = os.path.join(BASE_DIR, "matter_bridge")
 MATTER_SCRIPT_PATH = os.path.join(MATTER_BRIDGE_DIR, "bridge.mjs")
 MATTER_STORAGE_DIR = os.path.join(DATA_DIR, "matter_storage")
 MATTER_CONTROL_URL = "http://127.0.0.1:5549"
+_START_RETRY_COOLDOWN_S = 15.0
+_BRIDGE_READY_TIMEOUT_S = 4.0
 
 # Passcodes interdits par la spécification Matter §5.1.1.6
 _INVALID_MATTER_PASSCODES = {
@@ -124,6 +127,8 @@ class MatterBridgeManager:
         self._lock = asyncio.Lock()
         self._stopping = False
         self._webhook_secret: str = secrets.token_hex(32)
+        self._last_start_error: str = ""
+        self._last_start_attempt: float = 0.0
 
     @property
     def webhook_secret(self) -> str:
@@ -135,11 +140,37 @@ class MatterBridgeManager:
         s = get_settings_dict()
         return s.get("matter_enabled", "1") not in ("0", "false", "False")
 
+    def _record_start_failure(self, error: str) -> dict[str, Any]:
+        """Enregistre l'échec de démarrage pour éviter une boucle de relance immédiate."""
+        self._last_start_error = error
+        self._last_start_attempt = time.monotonic()
+        return {"running": False, "enabled": True, "error": error}
+
+    def _in_failure_cooldown(self) -> bool:
+        """Indique si une tentative récente vient d'échouer et reste en période de refroidissement."""
+        return bool(
+            self._proc is None
+            and self._last_start_error
+            and (time.monotonic() - self._last_start_attempt) < _START_RETRY_COOLDOWN_S
+        )
+
+    async def _check_bridge_prerequisites(self) -> tuple[str | None, str | None]:
+        """Vérifie la présence de Node.js, du script bridge.mjs et des node_modules Matter."""
+        node_bin = await asyncio.to_thread(_find_node_binary)
+        if not node_bin:
+            return None, "Exécutable Node.js introuvable pour le pont Matter."
+        if not await asyncio.to_thread(os.path.isfile, MATTER_SCRIPT_PATH):
+            return None, f"Script Matter introuvable : {MATTER_SCRIPT_PATH}"
+        node_modules_dir = os.path.join(MATTER_BRIDGE_DIR, "node_modules")
+        if not await asyncio.to_thread(os.path.isdir, node_modules_dir):
+            return None, "Dépendances Node.js du pont Matter non installées (matter_bridge/node_modules manquant)."
+        return node_bin, None
+
     async def is_control_alive(self) -> bool:
         """Vérifie si l'API HTTP locale du pont Matter (127.0.0.1:5549) répond."""
         try:
-            async with borrow_http_client(timeout=1.5) as client:
-                r = await client.get(f"{MATTER_CONTROL_URL}/status", timeout=1.5)
+            async with borrow_http_client(timeout=0.5) as client:
+                r = await client.get(f"{MATTER_CONTROL_URL}/status", timeout=0.5)
                 return r.status_code == 200
         except Exception:
             return False
@@ -163,9 +194,16 @@ class MatterBridgeManager:
         return env, device_name, matter_port
 
     async def _wait_for_bridge_ready(self, device_name: str, matter_port: str) -> dict[str, Any]:
-        for _ in range(25):
-            await asyncio.sleep(0.25)
+        deadline = time.monotonic() + _BRIDGE_READY_TIMEOUT_S
+        while time.monotonic() < deadline:
+            await asyncio.sleep(0.2)
+            if self._proc is not None:
+                rc = self._proc.poll()
+                if rc is not None:
+                    self._proc = None
+                    return self._record_start_failure(f"Le pont Matter s'est arrêté prématurément (code {rc}).")
             if await self.is_control_alive():
+                self._last_start_error = ""
                 status = await self._fetch_status_unlocked()
                 code = status.get("manualPairingCodeFormatted") or status.get("manualPairingCode") or "---"
                 db_log(
@@ -175,25 +213,22 @@ class MatterBridgeManager:
                     get_active_mode(),
                 )
                 return status
-        return {
-            "running": False,
-            "enabled": True,
-            "error": "Délai dépassé lors de l'initialisation du pont Matter.",
-        }
+        return self._record_start_failure("Délai dépassé lors de l'initialisation du pont Matter.")
 
-    async def ensure_started(self) -> dict[str, Any]:
+    async def ensure_started(self, force: bool = False) -> dict[str, Any]:
         """Démarre le sous-processus Node.js Matter de manière idempotente et attend sa disponibilité."""
         async with self._lock:
             if not self.is_enabled():
                 return {"running": False, "enabled": False, "reason": "Pont Matter désactivé dans la configuration"}
+            if not force and self._in_failure_cooldown():
+                return {"running": False, "enabled": True, "error": self._last_start_error}
             if await self.is_control_alive():
+                self._last_start_error = ""
                 return await self._fetch_status_unlocked()
 
-            node_bin = await asyncio.to_thread(_find_node_binary)
-            if not node_bin:
-                return {"running": False, "enabled": True, "error": "Exécutable Node.js introuvable pour le pont Matter."}
-            if not await asyncio.to_thread(os.path.isfile, MATTER_SCRIPT_PATH):
-                return {"running": False, "enabled": True, "error": f"Script Matter introuvable : {MATTER_SCRIPT_PATH}"}
+            node_bin, prereq_err = await self._check_bridge_prerequisites()
+            if prereq_err or not node_bin:
+                return self._record_start_failure(prereq_err or "Exécutable Node.js introuvable pour le pont Matter.")
 
             self._stopping = False
             await asyncio.to_thread(os.makedirs, MATTER_STORAGE_DIR, exist_ok=True)
@@ -214,27 +249,32 @@ class MatterBridgeManager:
                 self._proc = await asyncio.to_thread(_spawn)
             except Exception as e:
                 db_log("ERROR", "MATTER", f"Impossible de lancer le pont Matter : {e}", get_active_mode())
-                return {"running": False, "enabled": True, "error": str(e)}
+                return self._record_start_failure(str(e))
 
             return await self._wait_for_bridge_ready(device_name, matter_port)
 
     async def stop(self) -> None:
         """Arrête proprement le sous-processus Node.js du pont Matter."""
         self._stopping = True
+        self._last_start_error = ""
+        self._last_start_attempt = 0.0
         proc = self._proc
-        if proc and proc.poll() is None:
-            def _terminate_proc():
-                try:
-                    proc.terminate()
+        try:
+            if proc and proc.poll() is None:
+                def _terminate_proc():
                     try:
-                        proc.wait(timeout=3)
-                    except subprocess.TimeoutExpired:
-                        proc.kill()
-                except Exception as exc:
-                    logger.debug("Erreur arrêt processus Matter : %s", exc)
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=3)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                    except Exception as exc:
+                        logger.debug("Erreur arrêt processus Matter : %s", exc)
 
-            await asyncio.to_thread(_terminate_proc)
-        self._proc = None
+                await asyncio.to_thread(_terminate_proc)
+        finally:
+            self._proc = None
+            self._stopping = False
 
     async def _fetch_status_unlocked(self) -> dict[str, Any]:
         try:
@@ -252,7 +292,11 @@ class MatterBridgeManager:
         """Retourne le statut courant du pont Matter (avec redémarrage automatique si activé)."""
         if not self.is_enabled():
             return {"running": False, "enabled": False}
-        if not await self.is_control_alive() and not self._stopping:
+        if self._stopping:
+            return {"running": False, "enabled": True, "reason": "Arrêt du pont Matter en cours"}
+        if self._in_failure_cooldown():
+            return {"running": False, "enabled": True, "error": self._last_start_error}
+        if not await self.is_control_alive():
             return await self.ensure_started()
         return await self._fetch_status_unlocked()
 
@@ -293,7 +337,7 @@ class MatterBridgeManager:
             "Réinitialisation d'usine de l'appairage Matter effectuée (nouveau QR Code généré).",
             get_active_mode(),
         )
-        return await self.ensure_started()
+        return await self.ensure_started(force=True)
 
 
 matter_manager = MatterBridgeManager()

@@ -55,17 +55,40 @@ class AguaCloudClient:
             "login_api_url": "",
         }
 
-    def resolve_brand_config(self, settings: dict[str, str] | None = None) -> dict[str, str]:
-        """Résout endpoint, customer_code, brand_id, brand header et login_api_url depuis les réglages ou brands.json."""
-        s = settings or {}
-        brand_key = str(s.get("agua_brand") or "nobis").strip()
-        preset = BRANDS_BY_ID.get(brand_key) or {}
+    def reset_session(self) -> None:
+        """Réinitialise le contexte d'authentification et la carte des registres lors d'un changement de marque ou de compte."""
+        self.token_jwt = None
+        self.refresh_token = None
+        self.id_device = ""
+        self.id_product = ""
+        self.stove_name = ""
+        self.devices_list = []
+        self.working_write_endpoint = None
+        self.raw_registers_map = {}
+        self.registers_map_by_offset = {}
+        self.registers_map_by_key = {}
+        self.capabilities = {}
 
-        api_url = (str(s.get("agua_api_url") or preset.get("api_url") or self.BASE_URL)).strip().rstrip("/")
-        customer_code = (str(s.get("agua_customer_code") or preset.get("customer_code") or self.CUSTOMER_CODE)).strip()
-        brand_id = (str(s.get("agua_brand_id") or preset.get("brand_id") or self.BRAND_ID)).strip()
-        brand_header = (str(s.get("agua_brand_header") or preset.get("brand") or "")).strip()
-        login_api_url = (str(s.get("agua_login_api_url") or preset.get("login_api_url") or "")).strip()
+    def resolve_brand_config(self, settings: dict[str, str] | None = None) -> dict[str, str]:
+        """Résout endpoint, customer_code, brand_id, brand header et login_api_url depuis brands.json ou réglages custom."""
+        s = settings or {}
+        brand_key = str(s.get("agua_brand") or "nobis").strip() or "nobis"
+        preset = BRANDS_BY_ID.get(brand_key) or {}
+        use_preset = brand_key != "custom" and bool(preset.get("api_url"))
+
+        if use_preset:
+            api_url = str(preset.get("api_url") or self.BASE_URL).strip().rstrip("/")
+            customer_code = str(preset.get("customer_code") or self.CUSTOMER_CODE).strip()
+            brand_id = str(preset.get("brand_id") or self.BRAND_ID).strip()
+            brand_header = str(preset.get("brand") or "").strip()
+            login_api_url = str(preset.get("login_api_url") or "").strip()
+        else:
+            api_url = str(s.get("agua_api_url") or preset.get("api_url") or self.BASE_URL).strip().rstrip("/")
+            customer_code = str(s.get("agua_customer_code") or preset.get("customer_code") or self.CUSTOMER_CODE).strip()
+            brand_id = str(s.get("agua_brand_id") or preset.get("brand_id") or self.BRAND_ID).strip()
+            brand_header = str(s.get("agua_brand_header") or preset.get("brand") or "").strip()
+            login_api_url = str(s.get("agua_login_api_url") or preset.get("login_api_url") or "").strip()
+
         return {
             "brand_key": brand_key,
             "api_url": api_url or self.BASE_URL,

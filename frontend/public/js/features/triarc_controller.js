@@ -129,7 +129,7 @@ function promptTriArcBatchValidation() {
 
       toSend.forEach(c => setTriArcOptimistic(c.reg_key, c.value, 6000));
 
-      if (silenceModeState && silenceModeState.active && toSend.some(c => SILENCE_OVERRIDABLE_KEYS[c.reg_key])) {
+      if (window.stoveProvider?.isContainerActive?.() && silenceModeState && silenceModeState.active && toSend.some(c => SILENCE_OVERRIDABLE_KEYS[c.reg_key])) {
         await deactivateSilenceMode(toSend);
         return;
       }
@@ -173,6 +173,11 @@ function closeTriArcOptionBubble() {
 }
 
 function toggleTriArcOptionBubble(modeName) {
+  if (modeName === "silence" && !window.stoveProvider?.isContainerActive?.()) {
+    triArcExpandedMode = null;
+    renderTriArcCockpit();
+    return;
+  }
   triArcExpandedMode = (triArcExpandedMode === modeName) ? null : modeName;
   renderTriArcCockpit();
 }
@@ -218,8 +223,8 @@ function setTriArcAutoOption(idx) {
 async function setTriArcBoostOption(val) {
   closeTriArcOptionBubble();
   const v = Number(val);
-  // Le mode Boost désactive le mode silence s'il est actif
-  if (v > 0 && silenceModeState && silenceModeState.active) {
+  // Le mode Boost désactive le mode silence s'il est actif (conteneur Mode + uniquement)
+  if (v > 0 && window.stoveProvider?.isContainerActive?.() && silenceModeState && silenceModeState.active) {
     await deactivateSilenceMode();
   }
   // Ne désactive pas les fonctions auto
@@ -228,6 +233,7 @@ async function setTriArcBoostOption(val) {
 
 async function setTriArcSilenceHours(hours) {
   closeTriArcOptionBubble();
+  if (!window.stoveProvider?.isContainerActive?.()) return;
   if (hours <= 0) {
     await deactivateSilenceMode();
   } else {

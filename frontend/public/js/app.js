@@ -17,6 +17,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 
   try { if (typeof populateBrandSelects === "function") populateBrandSelects(); } catch (e) { console.error("[Init] Brands:", e); }
+  try { if (typeof syncVersionBadges === "function") syncVersionBadges(); } catch (e) { console.error("[Init] Versions:", e); }
   try { if (typeof applyModeVisibility === "function") applyModeVisibility(); } catch (e) { console.error("[Init] ModeVisibility:", e); }
 
   const settingsPane = document.getElementById("subtab-pane-settings");

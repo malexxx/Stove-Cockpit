@@ -1,12 +1,13 @@
-// Configuration Vite & Vitest pour Stove Cockpit (injection de partiels HTML et alias @shared).
+// Configuration Vite & Vitest pour Stove Cockpit (injection de partiels HTML, version frontend et alias @shared).
 import fs from "node:fs";
 import path from "node:path";
 import { defineConfig } from "vite";
 
 const INCLUDE_RE = /<!--\s*@include\s+([a-zA-Z0-9_./-]+)\s*-->/g;
+const pkg = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, "package.json"), "utf-8"));
 
 function htmlPartialsPlugin() {
-  const rootDir = path.resolve(__dirname);
+  const rootDir = path.resolve(import.meta.dirname);
   return {
     name: "stove-cockpit-html-partials",
     transformIndexHtml(html) {
@@ -24,9 +25,12 @@ function htmlPartialsPlugin() {
 export default defineConfig({
   base: "./",
   plugins: [htmlPartialsPlugin()],
+  define: {
+    __FRONTEND_VERSION__: JSON.stringify(pkg.version || "0.0.1"),
+  },
   resolve: {
     alias: {
-      "@shared": path.resolve(__dirname, "../shared"),
+      "@shared": path.resolve(import.meta.dirname, "../shared"),
     },
   },
   build: {

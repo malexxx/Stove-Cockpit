@@ -16,7 +16,7 @@ from clients import (
     notification_service,
     weather_service,
 )
-from config import APP_VERSION, BRANDS_CATALOG, MODE_DB_PATHS, get_hopper_capacity_kg
+from config import APP_VERSION, BRANDS_BY_ID, BRANDS_CATALOG, MODE_DB_PATHS, get_hopper_capacity_kg
 from database import (
     db_log,
     encrypt_setting_value,
@@ -60,7 +60,35 @@ async def api_list_brands():
     return {"brands": BRANDS_CATALOG}
 
 
+_CLOUD_AUTH_KEYS = {
+    "agua_brand",
+    "agua_api_url",
+    "agua_customer_code",
+    "agua_brand_id",
+    "agua_brand_header",
+    "agua_login_api_url",
+    "agua_email",
+    "agua_password",
+}
+
+
+def _apply_brand_preset_defaults(raw_dict: dict) -> None:
+    """Synchronise automatiquement URL/codes Agua IOT depuis brands.json lorsqu'une marque prédéfinie est choisie."""
+    brand_key = str(raw_dict.get("agua_brand") or "").strip()
+    if not brand_key or brand_key == "custom":
+        return
+    preset = BRANDS_BY_ID.get(brand_key)
+    if not preset or not preset.get("api_url"):
+        return
+    raw_dict["agua_api_url"] = str(preset.get("api_url") or "").strip().rstrip("/")
+    raw_dict["agua_customer_code"] = str(preset.get("customer_code") or "").strip()
+    raw_dict["agua_brand_id"] = str(preset.get("brand_id") or "1").strip()
+    raw_dict["agua_brand_header"] = str(preset.get("brand") or "").strip()
+    raw_dict["agua_login_api_url"] = str(preset.get("login_api_url") or "").strip()
+
+
 async def _validate_and_normalize_settings(raw_dict: dict) -> None:
+    _apply_brand_preset_defaults(raw_dict)
     if "webhook_url" in raw_dict:
         wh_url = str(raw_dict["webhook_url"] or "").strip()
         if wh_url and not await asyncio.to_thread(is_safe_webhook_url, wh_url):
@@ -136,6 +164,8 @@ async def api_save_settings(payload: SettingsPayload, request: Request):
     await _validate_and_normalize_settings(raw_dict)
     _persist_settings_dict(raw_dict)
 
+    if any(k in _CLOUD_AUTH_KEYS for k in raw_dict):
+        agua_client.reset_session()
     if "agua_password" in raw_dict and raw_dict["agua_password"] != "********":
         clear_installer_sessions()
 

@@ -29,7 +29,6 @@ const DEFAULTS = {
   duct_left_name: "SX",
   duct_right_name: "DX",
   demo_profile: "nobis_2ducts",
-  local_silence_state: "",
 };
 
 function _isNativePlatform() {

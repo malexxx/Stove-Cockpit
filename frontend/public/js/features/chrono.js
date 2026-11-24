@@ -323,7 +323,7 @@ async function applyProgramChanges(p, changes) {
 
   forceCloseProgramModal();
 
-  if (silenceModeState && silenceModeState.active && toSend.some(c => SILENCE_OVERRIDABLE_KEYS[c.reg_key])) {
+  if (window.stoveProvider?.isContainerActive?.() && silenceModeState && silenceModeState.active && toSend.some(c => SILENCE_OVERRIDABLE_KEYS[c.reg_key])) {
     await deactivateSilenceMode(toSend);
     return;
   }

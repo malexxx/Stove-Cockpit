@@ -137,31 +137,36 @@ function switchTab(tabId) {
   const mainEl = document.querySelector("main");
   if (mainEl) mainEl.scrollTop = 0;
 
-  ["tab-control", "tab-pellets", "tab-chrono", "tab-dashboard", "tab-installer"].forEach(id => {
+  ["tab-control", "tab-pellets", "tab-chrono", "tab-dashboard", "tab-plus-teaser", "tab-installer"].forEach(id => {
     const el = document.getElementById(id);
+    const isTarget = (id === tabId);
     if (el) {
-      const isTarget = (id === tabId);
       el.classList.toggle("hidden", !isTarget);
       el.style.display = isTarget ? "" : "none";
     }
+    const inactiveTextCls = id === "tab-plus-teaser" ? "text-indigo-300" : "text-gray-400";
     const btn = document.getElementById("btn-" + id);
     if (btn) {
-      if (id === tabId) {
+      if (isTarget) {
         btn.classList.add("tab-active");
-        btn.classList.remove("text-gray-400");
+        btn.classList.remove("text-gray-400", "text-indigo-300");
+        btn.setAttribute("aria-current", "page");
       } else {
         btn.classList.remove("tab-active");
-        btn.classList.add("text-gray-400");
+        btn.classList.add(inactiveTextCls);
+        btn.removeAttribute("aria-current");
       }
     }
     const mobBtn = document.getElementById("mob-btn-" + id);
     if (mobBtn) {
-      if (id === tabId) {
+      if (isTarget) {
         mobBtn.classList.add("mob-tab-active");
-        mobBtn.classList.remove("text-gray-400");
+        mobBtn.classList.remove("text-gray-400", "text-indigo-300");
+        mobBtn.setAttribute("aria-current", "page");
       } else {
         mobBtn.classList.remove("mob-tab-active");
-        mobBtn.classList.add("text-gray-400");
+        mobBtn.classList.add(inactiveTextCls);
+        mobBtn.removeAttribute("aria-current");
       }
     }
   });
@@ -211,33 +216,88 @@ const connectionState = {
   containerLatencyMs: null,
 };
 
+function _formatVerTag(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  return s.startsWith("v") ? s : `v${s}`;
+}
+
+function getFrontendVersionLabel() {
+  return (
+    window.stoveProvider?.getFrontendVersion?.() ||
+    window.STOVE_FRONTEND_VERSION ||
+    window.StoveCore?.frontendVersionTag ||
+    "v0.0.1"
+  );
+}
+
+function getBackendVersionLabel(rawBackendVer = null) {
+  if (!window.stoveProvider?.isContainerActive?.()) return "";
+  const raw =
+    rawBackendVer ||
+    window.stoveProvider?.getBackendVersion?.() ||
+    (typeof currentSettings !== "undefined" && currentSettings && (currentSettings.backend_version || currentSettings.docker_version));
+  return _formatVerTag(raw);
+}
+
+function syncVersionBadges(rawBackendVer = null) {
+  const frontVer = getFrontendVersionLabel();
+  const backVer = getBackendVersionLabel(rawBackendVer);
+  const isContainer = Boolean(window.stoveProvider?.isContainerActive?.());
+
+  const hdrFront = document.getElementById("hdr-frontend-version-badge");
+  if (hdrFront) hdrFront.textContent = `📱 Front ${frontVer}`;
+  const cfgFront = document.getElementById("cfg-frontend-version");
+  if (cfgFront) cfgFront.textContent = frontVer;
+
+  const hdrBack = document.getElementById("hdr-docker-version-badge");
+  if (hdrBack) hdrBack.textContent = backVer ? `🐳 Back ${backVer}` : "🐳 Back --";
+  const cfgBack = document.getElementById("cfg-docker-version");
+  if (cfgBack) cfgBack.textContent = backVer || "--";
+
+  const diffBadge = document.getElementById("hdr-version-diff-badge");
+  if (diffBadge) {
+    const differs =
+      isContainer &&
+      Boolean(frontVer && backVer) &&
+      frontVer.replace(/^v/i, "") !== backVer.replace(/^v/i, "");
+    diffBadge.classList.toggle("hidden", !differs);
+    if (differs) {
+      diffBadge.title = `Frontend ${frontVer} connecté au Backend ${backVer}`;
+    }
+  }
+}
+
 // Met à jour la couleur du rectangle global autour des 2 pictos (vert uniquement si les 2 pictos sont verts)
 function updateStatusPillBorder() {
   const pillEl = document.getElementById("hdr-status-pill");
   if (!pillEl) return;
-  const dockerVer = (typeof currentSettings !== "undefined" && currentSettings && currentSettings.docker_version) || "v2.4.0";
+  const frontVer = getFrontendVersionLabel();
+  const backVer = getBackendVersionLabel();
+  const verLabel = backVer ? `App ${frontVer} / Serveur ${backVer}` : `App ${frontVer}`;
   const cState = connectionState.containerStatus;
   const mState = connectionState.cloudStatus;
 
   if (cState === "connected" && mState === "connected") {
     pillEl.className = "flex items-center gap-1.5 px-2.5 py-1 sm:py-1.5 rounded-xl border bg-emerald-950/60 border-emerald-500/70 shadow-[0_0_10px_rgba(16,185,129,0.25)] cursor-pointer transition-all duration-200 hover:brightness-110";
-    pillEl.title = `Conteneur (${dockerVer}) & Liaison actifs • Cliquer pour ouvrir les réglages`;
+    pillEl.title = `Liaison active (${verLabel}) • Cliquer pour ouvrir les réglages`;
   } else if (cState === "disconnected" || mState === "disconnected") {
     pillEl.className = "flex items-center gap-1.5 px-2.5 py-1 sm:py-1.5 rounded-xl border bg-rose-950/75 border-rose-500/80 shadow-[0_0_12px_rgba(244,63,94,0.35)] animate-pulse cursor-pointer transition-all duration-200 hover:brightness-110";
-    pillEl.title = `Anomalie de connexion (${dockerVer}) • Cliquer pour ouvrir les réglages`;
+    pillEl.title = `Anomalie de connexion (${verLabel}) • Cliquer pour ouvrir les réglages`;
   } else {
     pillEl.className = "flex items-center gap-1.5 px-2.5 py-1 sm:py-1.5 rounded-xl border bg-amber-950/70 border-amber-500/80 shadow-[0_0_12px_rgba(245,158,11,0.35)] cursor-pointer transition-all duration-200 hover:brightness-110";
-    pillEl.title = `Mode dégradé / simulation ou synchronisation (${dockerVer}) • Cliquer pour ouvrir les réglages`;
+    pillEl.title = `Mode dégradé / simulation ou synchronisation (${verLabel}) • Cliquer pour ouvrir les réglages`;
   }
 }
 
-// Met à jour l'indicateur visuel de connexion au conteneur Docker Nobis.Supervisor (picto Docker)
+// Met à jour l'indicateur visuel de connexion au conteneur Docker Stove Cockpit (picto Docker)
 function updateContainerConnectionIndicator(overrideStatus, message) {
   const verEl = document.getElementById("hdr-container-version");
   const cfgDiagContainer = document.getElementById("cfg-diag-container");
 
   const appMode = window.stoveProvider ? window.stoveProvider.getMode() : "container";
-  const dockerVer = (typeof currentSettings !== "undefined" && currentSettings && currentSettings.docker_version) || "v0.0.1";
+  const frontVer = getFrontendVersionLabel();
+  const dockerVer = getBackendVersionLabel() || "Backend";
 
   if (appMode !== "container") {
     connectionState.containerStatus = "connected";
@@ -248,12 +308,12 @@ function updateContainerConnectionIndicator(overrideStatus, message) {
         demo: "text-emerald-400",
       };
       const titleMap = {
-        standalone: "Mode Autonome (sans conteneur)",
-        fallback: "Mode Repli Cloud (conteneur hors portée)",
-        demo: "Mode Démo (hors-ligne)",
+        standalone: `Mode Autonome (App ${frontVer}, sans conteneur)`,
+        fallback: `Mode Repli Cloud (App ${frontVer}, conteneur hors portée)`,
+        demo: `Mode Démo (App ${frontVer}, hors-ligne)`,
       };
       verEl.className = `flex items-center justify-center w-4 h-4 sm:w-[18px] sm:h-[18px] ${clsMap[appMode] || "text-gray-400"}`;
-      verEl.title = titleMap[appMode] || "Mode Autonome";
+      verEl.title = titleMap[appMode] || `Mode Autonome (App ${frontVer})`;
     }
     updateStatusPillBorder();
     return;

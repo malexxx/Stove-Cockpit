@@ -68,6 +68,19 @@ function applyModeVisibility() {
     }
   }
 
+  // Mode Silence géré exclusivement par le conteneur
+  if (!isContainer) {
+    if (typeof silenceModeState !== "undefined") {
+      silenceModeState = { active: false, remaining_seconds: 0, end_epoch: 0, duration_hours: 2.0 };
+    }
+    if (typeof closeSilenceModal === "function") closeSilenceModal();
+    if (typeof triArcExpandedMode !== "undefined" && triArcExpandedMode === "silence") {
+      triArcExpandedMode = null;
+    }
+  }
+  if (typeof syncVersionBadges === "function") syncVersionBadges();
+  if (typeof renderTriArcCockpit === "function") renderTriArcCockpit();
+
   // Résumé accordéon Option +
   const plusSum = document.getElementById("acc-sum-plus");
   if (plusSum) {
@@ -81,6 +94,38 @@ function applyModeVisibility() {
   }
 }
 
+function _renderBrandApiPreview(previewId, brandId) {
+  const box = document.getElementById(previewId);
+  if (!box) return;
+  if (!brandId || brandId === "custom") {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+  const preset = window.stoveProvider?.getBrandPreset?.(brandId);
+  if (!preset || !preset.api_url) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+  const parts = [
+    `<span class="text-gray-400">API :</span> <code class="font-mono text-amber-300 break-all">${escapeHtml(preset.api_url)}</code>`,
+    `<span class="text-gray-400">Code client :</span> <code class="font-mono text-cyan-300">${escapeHtml(preset.customer_code || "--")}</code>`,
+    `<span class="text-gray-400">Brand ID :</span> <code class="font-mono text-gray-200">${escapeHtml(preset.brand_id || "1")}</code>`,
+  ];
+  if (preset.brand) {
+    parts.push(`<span class="text-gray-400">En-tête :</span> <code class="font-mono text-emerald-300">${escapeHtml(preset.brand)}</code>`);
+  }
+  const loginLine = preset.login_api_url
+    ? `<div class="text-[10px] text-gray-400 truncate">Pont Auth : <code class="font-mono text-sky-300">${escapeHtml(preset.login_api_url)}</code></div>`
+    : "";
+  box.classList.remove("hidden");
+  box.innerHTML = `
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1">${parts.join("")}</div>
+    ${loginLine}
+  `;
+}
+
 function populateBrandSelects() {
   const pm = window.stoveProvider;
   if (!pm || typeof pm.getBrands !== "function") return;
@@ -90,12 +135,14 @@ function populateBrandSelects() {
     if (!sel) continue;
     const prev = sel.value;
     sel.innerHTML = brands
-      .map((b) => `<option value="${escapeHtml(b.id)}">${escapeHtml(b.label)}</option>`)
+      .map((b) => `<option value="${escapeHtml(b.id)}">${escapeHtml(b.name || b.label || b.id)}</option>`)
       .join("");
     if (prev && brands.some((b) => b.id === prev)) {
       sel.value = prev;
-    } else if (pm.prefs?.agua_brand) {
+    } else if (pm.prefs?.agua_brand && brands.some((b) => b.id === pm.prefs.agua_brand)) {
       sel.value = pm.prefs.agua_brand;
+    } else if (brands.some((b) => b.id === "nobis")) {
+      sel.value = "nobis";
     }
   }
   onOnboardingBrandChange();
@@ -109,6 +156,7 @@ function onOnboardingBrandChange() {
   if (!sel) return;
   const isCustom = sel.value === "custom";
   if (customBox) customBox.classList.toggle("hidden", !isCustom);
+  _renderBrandApiPreview("onb-brand-api-preview", sel.value);
   const preset = window.stoveProvider?.getBrandPreset?.(sel.value);
   if (preset && hopperInp && !hopperInp.dataset.userEdited) {
     hopperInp.value = String(preset.default_hopper_kg || 30);
@@ -118,8 +166,23 @@ function onOnboardingBrandChange() {
 function onSettingsBrandChange() {
   const sel = document.getElementById("cfg-agua-brand");
   const customBox = document.getElementById("cfg-custom-brand-box");
-  if (!sel || !customBox) return;
-  customBox.classList.toggle("hidden", sel.value !== "custom");
+  if (!sel) return;
+  const isCustom = sel.value === "custom";
+  if (customBox) customBox.classList.toggle("hidden", !isCustom);
+  _renderBrandApiPreview("cfg-brand-api-preview", sel.value);
+  if (!isCustom) {
+    const preset = window.stoveProvider?.getBrandPreset?.(sel.value) || {};
+    const apiUrlEl = document.getElementById("cfg-agua-api-url");
+    if (apiUrlEl) apiUrlEl.value = preset.api_url || "";
+    const custEl = document.getElementById("cfg-agua-customer-code");
+    if (custEl) custEl.value = preset.customer_code || "";
+    const brandIdEl = document.getElementById("cfg-agua-brand-id");
+    if (brandIdEl) brandIdEl.value = preset.brand_id || "1";
+    const loginUrlEl = document.getElementById("cfg-agua-login-api-url");
+    if (loginUrlEl) loginUrlEl.value = preset.login_api_url || "";
+    const brandHdrEl = document.getElementById("cfg-agua-brand-header");
+    if (brandHdrEl) brandHdrEl.value = preset.brand || "";
+  }
 }
 
 function populatePlusAndBrandSettings(s) {
@@ -128,6 +191,9 @@ function populatePlusAndBrandSettings(s) {
   const src = { ...prefs, ...(s || {}) };
 
   const brandSel = document.getElementById("cfg-agua-brand");
+  if (brandSel && brandSel.options.length === 0) {
+    populateBrandSelects();
+  }
   if (brandSel && src.agua_brand) brandSel.value = src.agua_brand;
   const apiUrlEl = document.getElementById("cfg-agua-api-url");
   if (apiUrlEl && src.agua_api_url !== undefined) apiUrlEl.value = src.agua_api_url || "";
@@ -135,6 +201,10 @@ function populatePlusAndBrandSettings(s) {
   if (custEl && src.agua_customer_code !== undefined) custEl.value = src.agua_customer_code || "";
   const brandIdEl = document.getElementById("cfg-agua-brand-id");
   if (brandIdEl && src.agua_brand_id !== undefined) brandIdEl.value = src.agua_brand_id || "";
+  const loginUrlEl = document.getElementById("cfg-agua-login-api-url");
+  if (loginUrlEl && src.agua_login_api_url !== undefined) loginUrlEl.value = src.agua_login_api_url || "";
+  const brandHdrEl = document.getElementById("cfg-agua-brand-header");
+  if (brandHdrEl && src.agua_brand_header !== undefined) brandHdrEl.value = src.agua_brand_header || "";
   const hopEl = document.getElementById("cfg-hopper-capacity");
   if (hopEl && src.hopper_capacity_kg !== undefined) hopEl.value = src.hopper_capacity_kg || 35;
 

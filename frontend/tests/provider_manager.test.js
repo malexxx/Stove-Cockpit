@@ -55,5 +55,33 @@ describe("ProviderManager", () => {
     pm.prefs = { app_mode: "standalone" };
     await pm.resolveActiveMode();
     await expect(pm.refillHopper({ target_pct: 100 })).rejects.toThrow(/Mode « \+ »/);
+    await expect(pm.activateSilence(2)).rejects.toThrow(/Mode « \+ »/);
+    await expect(pm.deactivateSilence()).rejects.toThrow(/Mode « \+ »/);
+  });
+
+  it("gère le mode Silence uniquement côté conteneur et dissocie versions Frontend / Backend", async () => {
+    const pm = new ProviderManager();
+    pm.prefs = { app_mode: "container", container_url: "http://192.168.1.50:8080" };
+    vi.spyOn(pm.container, "pingHealth").mockResolvedValue({
+      ok: true,
+      data: { status: "healthy", version: "2.9.0", backend_version: "2.9.0", docker_version: "v2.9.0" },
+    });
+    const reqSpy = vi.spyOn(pm.container, "request").mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "ok", silence_mode: { active: true, duration_hours: 2 } }),
+    });
+
+    await pm.resolveActiveMode();
+    expect(pm.getFrontendVersion()).toBe("v0.0.1");
+    expect(pm.getBackendVersion()).toBe("v2.9.0");
+
+    const res = await pm.activateSilence(2);
+    expect(res.silence_mode.active).toBe(true);
+    expect(reqSpy).toHaveBeenCalledWith("/api/silence/activate", expect.objectContaining({ method: "POST" }));
+
+    pm.prefs.app_mode = "demo";
+    await pm.resolveActiveMode();
+    expect(pm.getBackendVersion()).toBeNull();
   });
 });

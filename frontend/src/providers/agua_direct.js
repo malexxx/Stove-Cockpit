@@ -84,13 +84,17 @@ export class AguaDirectProvider {
   }
 
   resolveBrandConfig(settings = {}) {
-    const brandKey = String(settings.agua_brand || "nobis").trim();
+    const brandKey = String(settings.agua_brand || "nobis").trim() || "nobis";
     const preset = getBrandPreset(brandKey);
-    const apiUrl = String(settings.agua_api_url || preset.api_url || "https://nobis.agua-iot.com").trim().replace(/\/+$/, "");
-    const customerCode = String(settings.agua_customer_code || preset.customer_code || "700700").trim();
-    const brandId = String(settings.agua_brand_id || preset.brand_id || "1").trim();
-    const brandHeader = String(settings.agua_brand_header || preset.brand || "").trim();
-    const loginApiUrl = String(settings.agua_login_api_url || preset.login_api_url || "").trim();
+    const isCustom = brandKey === "custom";
+    const usePreset = !isCustom && Boolean(preset && preset.api_url);
+    const apiUrl = (usePreset ? preset.api_url : String(settings.agua_api_url || preset.api_url || "https://nobis.agua-iot.com"))
+      .trim()
+      .replace(/\/+$/, "");
+    const customerCode = (usePreset ? preset.customer_code : String(settings.agua_customer_code || preset.customer_code || "700700")).trim();
+    const brandId = (usePreset ? (preset.brand_id || "1") : String(settings.agua_brand_id || preset.brand_id || "1")).trim();
+    const brandHeader = (usePreset ? (preset.brand || "") : String(settings.agua_brand_header || preset.brand || "")).trim();
+    const loginApiUrl = (usePreset ? (preset.login_api_url || "") : String(settings.agua_login_api_url || preset.login_api_url || "")).trim();
     return { brandKey, apiUrl, customerCode, brandId, brandHeader, loginApiUrl };
   }
 

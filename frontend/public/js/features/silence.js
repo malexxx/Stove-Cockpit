@@ -32,6 +32,10 @@ function updateSilenceButtonState() {
  * sans reconstruire le SVG Tri-Arc complet chaque seconde.
  */
 function updateSilenceCountdownDisplay() {
+  if (!window.stoveProvider?.isContainerActive?.()) {
+    lastSilenceRemaining = 0;
+    return;
+  }
   if (!silenceModeState) return;
   if (silenceModeState.active) {
     const remSec = Math.max(0, Math.round(silenceModeState.end_epoch - Date.now() / 1000));
@@ -64,6 +68,10 @@ function updateSilenceCountdownDisplay() {
 }
 
 function openSilenceModal() {
+  if (!window.stoveProvider?.isContainerActive?.()) {
+    showToast("Le mode Silence est géré uniquement par le conteneur (Mode « + »).", true);
+    return;
+  }
   const modal = document.getElementById("silence-modal");
   if (!modal) return;
   setSilenceDurationPreset(2);
@@ -119,6 +127,10 @@ function handleSilenceDurationInput() {
 
 async function confirmActivateSilence() {
   closeSilenceModal();
+  if (!window.stoveProvider?.isContainerActive?.()) {
+    showToast("Le mode Silence est géré uniquement par le conteneur (Mode « + »).", true);
+    return;
+  }
   const hours = selectedSilenceHours || 2.0;
   try {
     showToast(`Activation du mode Silence ! pour ${hours}H en cours...`);
@@ -135,11 +147,9 @@ async function confirmActivateSilence() {
     }
     updateSilenceButtonState();
     if (typeof refreshLatestOnly === "function") await refreshLatestOnly();
-    if (window.stoveProvider?.isContainerActive?.() && typeof loadAudit === "function") await loadAudit();
+    if (typeof loadAudit === "function") await loadAudit();
     const isStoveOn = data.silence_mode && typeof data.silence_mode.is_stove_on === "boolean" ? data.silence_mode.is_stove_on : (Number(latestData.status_code ?? 0) !== 0);
-    if (data.silence_mode?.manual_only) {
-      showToast(`Mode Silence ! actif (${hours}H) — Minuterie manuelle (restauration auto en fin de minuterie avec le Mode « + »).`);
-    } else if (isStoveOn) {
+    if (isStoveOn) {
       showToast(`Mode Silence ! intelligent actif (${hours}H) : Boost/Éco/Chrono coupés, Auto total actif, consignes en hors gel 7°C.`);
     } else {
       showToast(`Mode Silence ! intelligent actif (${hours}H) : poêle éteint, consignes passées en hors gel (7°C).`);
@@ -150,6 +160,7 @@ async function confirmActivateSilence() {
 }
 
 async function deactivateSilenceMode(overrideCommands = null) {
+  if (!window.stoveProvider?.isContainerActive?.()) return;
   try {
     showToast(overrideCommands ? "Désactivation du mode Silence ! et application de la consigne..." : "Restauration des valeurs initiales en cours...");
     const data = await window.stoveProvider.deactivateSilence(overrideCommands);

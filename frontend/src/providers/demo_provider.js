@@ -1,5 +1,6 @@
 // Simulateur autonome léger (Mode Démo sans poêle physique / Validation Google Play Store).
 import schema from "@shared/micronova_schema.json";
+import { FRONTEND_VERSION } from "../version.js";
 
 const DEMO_PROFILES = {
   nobis_2ducts: {
@@ -254,7 +255,7 @@ export class DemoProvider {
     };
 
     return {
-      version: "0.0.1",
+      frontend_version: FRONTEND_VERSION,
       active_mode: "demo",
       stove_name: prof.stove_name,
       capabilities: prof.capabilities,

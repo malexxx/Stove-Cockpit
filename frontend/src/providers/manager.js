@@ -8,6 +8,7 @@ import { AguaDirectProvider, getAllBrands, getBrandPreset } from "./agua_direct.
 import { ContainerApiClient } from "./container_api.js";
 import { DemoProvider } from "./demo_provider.js";
 import { WeatherDirectClient } from "./weather_direct.js";
+import { FRONTEND_VERSION, FRONTEND_VERSION_TAG, formatVersionTag } from "../version.js";
 
 export class ProviderManager {
   constructor() {
@@ -18,6 +19,7 @@ export class ProviderManager {
     this.prefs = {};
     this.mode = "standalone"; // "standalone" | "container" | "fallback" | "demo"
     this.servedByContainer = false;
+    this.backendVersion = null;
     this.pollTimer = null;
     this.onStateCallback = null;
     this.lastPayload = null;
@@ -40,6 +42,9 @@ export class ProviderManager {
     if (this._looksLikeContainerHttpOrigin()) {
       const sameOriginPing = await this.container.pingHealth("", this.prefs.container_api_token || "");
       this.servedByContainer = Boolean(sameOriginPing.ok);
+      if (this.servedByContainer) {
+        this._recordBackendVersion(sameOriginPing.data);
+      }
     }
     if (this.servedByContainer) {
       this.prefs.app_mode = "container";
@@ -61,6 +66,22 @@ export class ProviderManager {
     return this.mode === "container";
   }
 
+  getFrontendVersion() {
+    return FRONTEND_VERSION_TAG;
+  }
+
+  getBackendVersion() {
+    return this.isContainerActive() ? this.backendVersion : null;
+  }
+
+  _recordBackendVersion(payload) {
+    if (!payload || typeof payload !== "object") return;
+    const raw = payload.backend_version || payload.docker_version || payload.version;
+    if (raw) {
+      this.backendVersion = formatVersionTag(raw);
+    }
+  }
+
   needsOnboarding() {
     if (this.servedByContainer) return false;
     return !this.prefs.app_mode;
@@ -78,6 +99,7 @@ export class ProviderManager {
     const desired = this.prefs.app_mode || (this.servedByContainer ? "container" : "demo");
     if (desired === "demo") {
       this.mode = "demo";
+      this.backendVersion = null;
       return this.mode;
     }
     if (desired === "container") {
@@ -88,13 +110,18 @@ export class ProviderManager {
       const health = await this.container.pingHealth();
       if (health.ok) {
         this.mode = "container";
+        this._recordBackendVersion(health.data);
         return this.mode;
       }
       const canFallback = this.prefs.fallback_to_cloud !== "0" && Boolean(this.prefs.agua_email && this.prefs.agua_password);
       this.mode = canFallback ? "fallback" : "container";
+      if (this.mode !== "container") {
+        this.backendVersion = null;
+      }
       return this.mode;
     }
     this.mode = "standalone";
+    this.backendVersion = null;
     return this.mode;
   }
 
@@ -136,12 +163,8 @@ export class ProviderManager {
       weatherData,
       this.agua.stoveName,
     );
-    const silState = this._getLocalSilenceState();
-    if (silState?.active) {
-      decoded.latest.set_silece_set = 1;
-    }
     const payload = {
-      version: "0.0.1",
+      frontend_version: FRONTEND_VERSION,
       active_mode: this.mode,
       stove_name: decoded.latest.stove_name,
       capabilities: decoded.capabilities,
@@ -154,7 +177,7 @@ export class ProviderManager {
       },
       settings: this.getPublicSettings(),
       registers: decoded.registers,
-      silence_mode: silState,
+      silence_mode: { active: false, remaining_seconds: 0, end_epoch: 0 },
       weather_data: weatherData,
     };
     this.lastPayload = payload;
@@ -175,6 +198,7 @@ export class ProviderManager {
       const r = await this.container.request(`/api/dashboard?range_key=${encodeURIComponent(rangeKey)}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
+      this._recordBackendVersion(data);
       this.lastPayload = data;
       return data;
     }
@@ -195,6 +219,7 @@ export class ProviderManager {
       const r = await this.container.request("/api/latest");
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
+      this._recordBackendVersion(data);
       this.lastPayload = data;
       return data;
     }
@@ -264,90 +289,46 @@ export class ProviderManager {
     return { status: "ok", synced_to: now.toLocaleString("fr-FR") };
   }
 
-  _getLocalSilenceState() {
-    try {
-      if (this.prefs.local_silence_state) {
-        return JSON.parse(this.prefs.local_silence_state);
-      }
-    } catch {
-      // ignore
-    }
-    return { active: false, remaining_seconds: 0, end_epoch: 0, duration_hours: 2.0 };
-  }
-
   async activateSilence(durationHours = 2.0) {
-    if (this.mode === "container") {
-      const r = await this.container.request("/api/silence/activate", {
-        method: "POST",
-        body: { duration_hours: durationHours },
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return await r.json();
-    }
-    const latest = this.lastPayload?.latest || {};
-    const initial = {
-      temp_amb_setpoint: Number(latest.temp_amb_setpoint ?? 20),
-      duct_left_setpoint: Number(latest.duct_left_setpoint ?? 20),
-      duct_right_setpoint: Number(latest.duct_right_setpoint ?? 20),
-      fun_pwf_set: Number(latest.fun_pwf_set ?? 0),
-      fun_auto_set: Number(latest.fun_auto_set ?? 1),
-      fan_front_speed: Number(latest.fan_front_speed ?? 3),
-    };
-    const isOn = Number(latest.status_code ?? 0) !== 0;
-    const cmds = isOn
-      ? [
-          { reg_key: "fun_pwf_set", value: 0 },
-          { reg_key: "fun_auto_set", value: 1 },
-          { reg_key: "fan_front_speed", value: 8 },
-          { reg_key: "temp_amb_setpoint", value: 7 },
-        ]
-      : [{ reg_key: "temp_amb_setpoint", value: 7 }];
-    await this.sendCommandBatch(cmds);
-
-    const nowSec = Math.floor(Date.now() / 1000);
-    const state = {
-      active: true,
-      manual_only: true,
-      duration_hours: durationHours,
-      start_epoch: nowSec,
-      end_epoch: nowSec + Math.round(durationHours * 3600),
-      initial_state: initial,
-    };
-    this.prefs.local_silence_state = JSON.stringify(state);
-    await savePrefsPatch({ local_silence_state: this.prefs.local_silence_state });
-    return { status: "ok", silence_mode: state };
+    this._requireContainer("Le mode Silence");
+    return this._containerJson("/api/silence/activate", {
+      method: "POST",
+      body: { duration_hours: durationHours },
+    });
   }
 
   async deactivateSilence(overrideCommands = null) {
-    if (this.mode === "container") {
-      const r = await this.container.request("/api/silence/deactivate", {
-        method: "POST",
-        body: overrideCommands ? { override_commands: overrideCommands } : {},
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return await r.json();
-    }
-    const cur = this._getLocalSilenceState();
-    const init = cur.initial_state || {};
-    const overrides = new Map((overrideCommands || []).map((c) => [c.reg_key, Number(c.value)]));
-    const cmds = [];
-    for (const [k, v] of Object.entries(init)) {
-      cmds.push({ reg_key: k, value: overrides.has(k) ? overrides.get(k) : Number(v) });
-    }
-    for (const [k, v] of overrides.entries()) {
-      if (!(k in init)) cmds.push({ reg_key: k, value: v });
-    }
-    if (cmds.length > 0) await this.sendCommandBatch(cmds);
-    const cleared = { active: false, remaining_seconds: 0, end_epoch: 0 };
-    this.prefs.local_silence_state = JSON.stringify(cleared);
-    await savePrefsPatch({ local_silence_state: this.prefs.local_silence_state });
-    return { status: "ok", silence_mode: cleared };
+    this._requireContainer("Le mode Silence");
+    return this._containerJson("/api/silence/deactivate", {
+      method: "POST",
+      body: overrideCommands ? { override_commands: overrideCommands } : {},
+    });
   }
 
   async saveSettings(patch, extraHeaders = {}) {
     const cleanPatch = { ...patch };
     if (cleanPatch.agua_password === "********") delete cleanPatch.agua_password;
     if (cleanPatch.container_api_token === "********") delete cleanPatch.container_api_token;
+
+    const cloudAuthKeys = [
+      "agua_brand",
+      "agua_api_url",
+      "agua_customer_code",
+      "agua_brand_id",
+      "agua_brand_header",
+      "agua_login_api_url",
+      "agua_email",
+      "agua_password",
+    ];
+    if (cloudAuthKeys.some((k) => k in cleanPatch)) {
+      this.agua.tokenJwt = null;
+      this.agua.refreshToken = null;
+      this.agua.idDevice = "";
+      this.agua.idProduct = "";
+      this.agua.stoveName = "";
+      this.agua.workingWriteEndpoint = null;
+      this._lastDirectFetchAt = 0;
+    }
 
     Object.assign(this.prefs, cleanPatch);
     await savePrefsPatch(cleanPatch);
@@ -397,6 +378,7 @@ export class ProviderManager {
         (evt) => {
           try {
             const msg = JSON.parse(evt.data);
+            this._recordBackendVersion(msg);
             if (msg.latest) {
               this.lastPayload = msg;
               onState(msg);

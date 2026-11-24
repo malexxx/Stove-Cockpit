@@ -232,7 +232,7 @@ class TestSecurityHardening(BugBountyTestCase):
         self.assertIn("--proxy-headers", dockerfile)
         self.assertIn("--forwarded-allow-ips", dockerfile)
         self.assertIn('VOLUME ["/app/data"]', dockerfile)
-        self.assertIn("FROM node:22-trixie-slim AS node-builder", dockerfile)
+        self.assertIn("FROM node:26-trixie-slim AS node-builder", dockerfile)
         self.assertIn("FROM python:3.12-slim-trixie", dockerfile)
         self.assertIn('org.opencontainers.image.licenses="MIT"', dockerfile)
         self.assertIn('org.opencontainers.image.source="https://github.com/malexxx/Stove-Cockpit"', dockerfile)

@@ -26,7 +26,7 @@ async def api_matter_restart(request: Request):
     """Redémarre le pont Thermostat Matter."""
     require_installer_auth_if_configured(request)
     await matter_manager.stop()
-    return await matter_manager.ensure_started()
+    return await matter_manager.ensure_started(force=True)
 
 
 @router.post("/factory-reset")

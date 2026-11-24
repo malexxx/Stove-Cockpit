@@ -57,14 +57,18 @@ def _fulfill_static_route(route, url: str) -> None:
     route.fulfill(status=404, body="Not Found")
 
 
-def _attach_app_routes(page: Page) -> None:
+def _attach_app_routes(page: Page, backend_version: str = "0.0.1") -> None:
     """Sert la SPA assemblée, les fichiers statiques depuis le disque et mocke les endpoints /api/*."""
     assembled_html = render_spa_html()
 
     def handle_route(route):
         url = route.request.url
         if url == f"{APP_ORIGIN}/health":
-            route.fulfill(status=200, content_type="application/json", body='{"status": "healthy", "version": "0.0.1"}')
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=f'{{"status": "healthy", "version": "{backend_version}", "backend_version": "{backend_version}", "docker_version": "v{backend_version}"}}',
+            )
         elif url.startswith(f"{APP_ORIGIN}/api/"):
             _fulfill_api_route(route, url)
         elif url.startswith(_STATIC_PREFIXES):
@@ -302,3 +306,131 @@ def test_ui_pellets_tab_no_scrollbars_on_smartphone(browser_instance):
         page.locator("#tab-pellets button[aria-label='Explication DJU']").click()
         assert page.locator("#action-modal").is_visible()
         context.close()
+
+
+def test_ui_brand_selector_populated_and_shows_api(page: Page):
+    """Vérifie que la liste des marques est remplie, affiche l'API correspondante et gère custom."""
+    page.goto(f"{APP_ORIGIN}/", wait_until="load")
+    page.wait_for_function("() => window.stoveProvider && document.querySelectorAll('#cfg-agua-brand option').length === 36")
+
+    res = page.evaluate("""() => {
+        switchTab("tab-installer");
+        toggleSettingsAccordion("conn", true);
+        const opts = Array.from(document.querySelectorAll("#cfg-agua-brand option")).map(o => ({ v: o.value, t: o.textContent.trim() }));
+        const sel = document.getElementById("cfg-agua-brand");
+
+        sel.value = "mypiazzetta";
+        onSettingsBrandChange();
+        const piazzettaPreview = document.getElementById("cfg-brand-api-preview").textContent;
+        const piazzettaCustomHidden = document.getElementById("cfg-custom-brand-box").classList.contains("hidden");
+
+        sel.value = "custom";
+        onSettingsBrandChange();
+        const customPreviewHidden = document.getElementById("cfg-brand-api-preview").classList.contains("hidden");
+        const customBoxVisible = !document.getElementById("cfg-custom-brand-box").classList.contains("hidden");
+
+        return { count: opts.length, allNonEmpty: opts.every(o => o.t.length > 0), piazzettaPreview, piazzettaCustomHidden, customPreviewHidden, customBoxVisible };
+    }""")
+
+    assert res["count"] == 36
+    assert res["allNonEmpty"] is True
+    assert "https://piazzetta.agua-iot.com" in res["piazzettaPreview"]
+    assert "458632" in res["piazzettaPreview"]
+    assert res["piazzettaCustomHidden"] is True
+    assert res["customPreviewHidden"] is True
+    assert res["customBoxVisible"] is True
+
+
+def test_ui_tab_active_visual_indicators(browser_instance):
+    """Vérifie l'indication visuelle des onglets sélectionnés sur desktop et mobile (y compris Mode +)."""
+    for viewport, btn_prefix, active_cls in (
+        ({"width": 1280, "height": 800}, "btn-", "tab-active"),
+        ({"width": 375, "height": 667}, "mob-btn-", "mob-tab-active"),
+    ):
+        context = browser_instance.new_context(viewport=viewport)
+        page = context.new_page()
+        _attach_app_routes(page)
+        page.goto(f"{APP_ORIGIN}/", wait_until="load")
+        page.wait_for_function("() => window.stoveProvider && window.stoveProvider.servedByContainer === true")
+
+        res = page.evaluate("""({ btnPrefix, activeCls }) => {
+            switchTab("tab-chrono");
+            const chronoBtn = document.getElementById(btnPrefix + "tab-chrono");
+            const ctrlBtn = document.getElementById(btnPrefix + "tab-control");
+            const chronoActive = chronoBtn.classList.contains(activeCls);
+            const chronoAria = chronoBtn.getAttribute("aria-current");
+            const ctrlRemoved = !ctrlBtn.classList.contains(activeCls) && !ctrlBtn.hasAttribute("aria-current");
+
+            // Test de tab-plus-teaser (visible hors conteneur)
+            window.stoveProvider.mode = "standalone";
+            applyModeVisibility();
+            switchTab("tab-plus-teaser");
+            const plusBtn = document.getElementById(btnPrefix + "tab-plus-teaser");
+            const plusVisible = !document.getElementById("tab-plus-teaser").classList.contains("hidden");
+            return {
+                chronoActive,
+                chronoAria,
+                ctrlRemoved,
+                chronoCleared: !chronoBtn.classList.contains(activeCls) && !chronoBtn.hasAttribute("aria-current"),
+                plusActive: plusBtn.classList.contains(activeCls),
+                plusAria: plusBtn.getAttribute("aria-current"),
+                plusVisible,
+            };
+        }""", {"btnPrefix": btn_prefix, "activeCls": active_cls})
+
+        assert res["chronoActive"] is True
+        assert res["chronoAria"] == "page"
+        assert res["ctrlRemoved"] is True
+        assert res["chronoCleared"] is True
+        assert res["plusVisible"] is True
+        assert res["plusActive"] is True
+        assert res["plusAria"] == "page"
+        context.close()
+
+
+def test_ui_silence_container_only(page: Page):
+    """Vérifie que le bouton Silence n'apparaît qu'en Mode + Conteneur et disparaît en Autonome/Démo."""
+    page.goto(f"{APP_ORIGIN}/", wait_until="load")
+    page.wait_for_function("() => window.stoveProvider && window.stoveProvider.servedByContainer === true")
+
+    res = page.evaluate("""() => {
+        const containerHasSilence = Boolean(document.querySelector("#triarc-slide-AMB button[onclick*=\\"silence\\"]"));
+        window.stoveProvider.mode = "standalone";
+        applyModeVisibility();
+        const standaloneHasSilence = Boolean(document.querySelector("#triarc-slide-AMB button[onclick*=\\"silence\\"]"));
+        window.stoveProvider.mode = "demo";
+        applyModeVisibility();
+        const demoHasSilence = Boolean(document.querySelector("#triarc-slide-AMB button[onclick*=\\"silence\\"]"));
+        return { containerHasSilence, standaloneHasSilence, demoHasSilence };
+    }""")
+
+    assert res["containerHasSilence"] is True
+    assert res["standaloneHasSilence"] is False
+    assert res["demoHasSilence"] is False
+
+
+def test_ui_independent_frontend_backend_versions(browser_instance):
+    """Vérifie l'affichage distinct des versions Frontend et Backend lorsqu'elles diffèrent."""
+    context = browser_instance.new_context(viewport={"width": 1280, "height": 800})
+    page = context.new_page()
+    _attach_app_routes(page, backend_version="9.8.7")
+    page.goto(f"{APP_ORIGIN}/", wait_until="load")
+    page.wait_for_function("() => window.stoveProvider && window.stoveProvider.servedByContainer === true")
+
+    res = page.evaluate("""() => {
+        switchTab("tab-installer");
+        return {
+            hdrFront: document.getElementById("hdr-frontend-version-badge").textContent.trim(),
+            hdrBack: document.getElementById("hdr-docker-version-badge").textContent.trim(),
+            cfgFront: document.getElementById("cfg-frontend-version").textContent.trim(),
+            cfgBack: document.getElementById("cfg-docker-version").textContent.trim(),
+            diffVisible: !document.getElementById("hdr-version-diff-badge").classList.contains("hidden"),
+        };
+    }""")
+
+    assert res["hdrFront"] == "📱 Front v0.0.1"
+    assert res["hdrBack"] == "🐳 Back v9.8.7"
+    assert res["cfgFront"] == "v0.0.1"
+    assert res["cfgBack"] == "v9.8.7"
+    assert res["diffVisible"] is True
+    context.close()

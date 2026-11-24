@@ -759,15 +759,19 @@ function renderTriArcBottomModes(T, zone = triArcZone) {
       `;
   })();
 
+  const hasContainerSilence = Boolean(window.stoveProvider?.isContainerActive?.());
+
   return `
     <div class="flex items-stretch gap-2 pt-1 pb-1">
-      <!-- 1. Silence (🤫) -->
+      ${hasContainerSilence ? `
+      <!-- 1. Silence (🤫 — géré uniquement par le conteneur Mode +) -->
       <button type="button" onclick="toggleTriArcOptionBubble('silence')"
         title="Mode Silence (Timer)"
         class="flex-1 h-14 sm:h-15 min-h-[54px] rounded-2xl border-2 flex flex-col items-center justify-center transition cursor-pointer ${silActive ? 'bg-purple-950/75 border-purple-400 text-white shadow-[0_0_12px_rgba(168,85,247,0.35)]' : 'bg-slate-900/90 border-slate-700 text-slate-400 hover:border-purple-400'}">
         <span class="text-2xl leading-none">🤫</span>
         ${silActive ? `<span id="triarc-silence-btn-timer" class="text-[10px] font-black mt-0.5 tabular-nums text-purple-200">${silTimerTxt}</span>` : ""}
       </button>
+      ` : ""}
 
       <!-- 2. Auto -->
       ${caps.has_auto !== false ? `
@@ -907,6 +911,7 @@ function renderTriArcFloatingOptionBubble(T) {
   }
 
   if (triArcExpandedMode === "silence") {
+    if (!window.stoveProvider?.isContainerActive?.()) return "";
     const silActive = T.isSilActive && T.remSec > 0;
     const remStr = silActive ? formatSilenceCountdown(T.remSec) : "OFF";
     return `
