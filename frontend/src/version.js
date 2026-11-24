@@ -20,6 +20,6 @@ export function versionsDiffer(verA, verB) {
 export const FRONTEND_VERSION =
   typeof __FRONTEND_VERSION__ !== "undefined" && __FRONTEND_VERSION__
     ? String(__FRONTEND_VERSION__)
-    : "0.0.3";
+    : "0.0.4";
 
 export const FRONTEND_VERSION_TAG = formatVersionTag(FRONTEND_VERSION);

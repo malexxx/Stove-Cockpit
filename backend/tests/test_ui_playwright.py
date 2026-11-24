@@ -57,7 +57,7 @@ def _fulfill_static_route(route, url: str) -> None:
     route.fulfill(status=404, body="Not Found")
 
 
-def _attach_app_routes(page: Page, backend_version: str = "0.0.3") -> None:
+def _attach_app_routes(page: Page, backend_version: str = "0.0.4") -> None:
     """Sert la SPA assemblée, les fichiers statiques depuis le disque et mocke les endpoints /api/*."""
     assembled_html = render_spa_html()
 
@@ -428,9 +428,9 @@ def test_ui_independent_frontend_backend_versions(browser_instance):
         };
     }""")
 
-    assert res["hdrFront"] == "📱 Front v0.0.3"
+    assert res["hdrFront"] == "📱 Front v0.0.4"
     assert res["hdrBack"] == "🐳 Back v9.8.7"
-    assert res["cfgFront"] == "v0.0.3"
+    assert res["cfgFront"] == "v0.0.4"
     assert res["cfgBack"] == "v9.8.7"
     assert res["diffVisible"] is True
     context.close()

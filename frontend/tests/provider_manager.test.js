@@ -73,7 +73,7 @@ describe("ProviderManager", () => {
     });
 
     await pm.resolveActiveMode();
-    expect(pm.getFrontendVersion()).toBe("v0.0.3");
+    expect(pm.getFrontendVersion()).toBe("v0.0.4");
     expect(pm.getBackendVersion()).toBe("v2.9.0");
 
     const res = await pm.activateSilence(2);

@@ -9,9 +9,22 @@ from fastapi.responses import JSONResponse, Response
 import httpx
 from pydantic import BaseModel, ConfigDict, StrictBool
 
-from database import add_container_log, db_log, get_active_mode
-from services.api_token_service import build_pairing_info, rotate_api_token
-from services.installer_auth import clear_installer_sessions, require_installer_auth_if_configured
+from clients import agua_client
+from database import add_container_log, db_log, get_active_mode, get_settings_dict
+from routers.settings import _persist_settings_dict, _validate_and_normalize_settings
+from services.api_token_service import build_pairing_info, rotate_api_token, verify_api_token
+from services.cred_sync_service import (
+    SYNCABLE_CLOUD_KEYS,
+    consume_sync_ticket,
+    create_sync_ticket,
+    decrypt_cred_envelope,
+    encrypt_cred_envelope,
+)
+from services.installer_auth import (
+    clear_installer_sessions,
+    is_installer_authenticated,
+    require_installer_auth_if_configured,
+)
 from services.lifecycle import spawn_background_task
 from services.storage_service import (
     MAX_BACKUP_UPLOAD_BYTES,
@@ -28,6 +41,7 @@ from services.update_service import (
     rollback_internal_update,
     save_update_settings,
 )
+from telemetry import collect_telemetry_cycle
 
 router = APIRouter(prefix="/api", tags=["System Admin"])
 
@@ -56,6 +70,34 @@ class UpdateConfigPayload(BaseModel):
     auto_apply: StrictBool | None = None
 
 
+class CloudSyncExportPayload(BaseModel):
+    """Paramètres d'export chiffré des identifiants Cloud vers l'application mobile."""
+
+    model_config = ConfigDict(extra="ignore")
+    sync_ticket: str | None = None
+
+
+class CloudSyncImportPayload(BaseModel):
+    """Paramètres d'import chiffré des identifiants Cloud depuis l'application mobile."""
+
+    model_config = ConfigDict(extra="ignore")
+    envelope: dict
+    sync_ticket: str | None = None
+    activate_cloud_mode: StrictBool = True
+
+
+def _require_valid_api_token(request: Request) -> str:
+    """Exige et retourne le jeton API du conteneur via X-API-Key ou Authorization Bearer."""
+    tok = (request.headers.get("x-api-key") or "").strip()
+    if not tok:
+        auth_hdr = (request.headers.get("authorization") or "").strip()
+        if auth_hdr.lower().startswith("bearer "):
+            tok = auth_hdr[7:].strip()
+    if not tok or not verify_api_token(tok):
+        raise HTTPException(status_code=401, detail="Jeton API du conteneur requis ou invalide.")
+    return tok
+
+
 @router.get("/system/storage")
 async def api_system_storage():
     """Retourne le diagnostic de persistance du dossier DATA_DIR (bind mount, volume nommé, anonyme ou éphémère)."""
@@ -64,9 +106,13 @@ async def api_system_storage():
 
 @router.get("/system/pairing-info")
 async def api_system_pairing_info(request: Request):
-    """Retourne l'URL HTTP et le jeton API pour connecter l'application mobile (Option +)."""
+    """Retourne l'URL HTTP et le jeton API pour connecter l'application mobile."""
     base_url = str(request.base_url).rstrip("/")
     payload = await asyncio.to_thread(build_pairing_info, base_url)
+    settings = await asyncio.to_thread(get_settings_dict)
+    payload["has_cloud_credentials"] = bool(
+        (settings.get("agua_email") or "").strip() and (settings.get("agua_password") or "").strip()
+    )
     return JSONResponse(content=payload, headers={"Cache-Control": "no-store"})
 
 
@@ -78,6 +124,130 @@ async def api_system_pairing_token_rotate(request: Request):
     active_mode = await asyncio.to_thread(get_active_mode)
     db_log("WARNING", "SECURITY", "Jeton API du conteneur compagnon régénéré.", active_mode)
     return JSONResponse(content={"status": "ok", "api_token": new_tok}, headers={"Cache-Control": "no-store"})
+
+
+@router.post(
+    "/system/cloud-credentials/ticket",
+    responses={403: {"description": "Authentification installateur requise"}},
+)
+async def api_system_cloud_sync_ticket(request: Request):
+    """Génère un QR Code incluant un ticket éphémère à usage unique (5 min) pour transférer les identifiants Cloud."""
+    require_installer_auth_if_configured(request)
+    ticket = await asyncio.to_thread(create_sync_ticket, 300)
+    base_url = str(request.base_url).rstrip("/")
+    pairing_payload = await asyncio.to_thread(build_pairing_info, base_url, ticket["sync_ticket"])
+    return JSONResponse(
+        content={**pairing_payload, "expires_in": ticket["expires_in"]},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post(
+    "/system/cloud-credentials/export",
+    responses={
+        401: {"description": "Jeton API du conteneur requis ou invalide"},
+        403: {"description": "Autorisation ou ticket requis"},
+        404: {"description": "Aucun identifiant Cloud ou météo configuré"},
+    },
+)
+async def api_system_cloud_credentials_export(
+    request: Request,
+    payload: Annotated[CloudSyncExportPayload | None, Body()] = None,
+):
+    """Exporte les identifiants Cloud et la station météo du conteneur chiffrés en AES-256-GCM."""
+    api_tok = _require_valid_api_token(request)
+    settings = await asyncio.to_thread(get_settings_dict)
+    has_pwd = bool((settings.get("agua_password") or "").strip())
+
+    ticket_val = (payload.sync_ticket or "").strip() if payload and payload.sync_ticket else ""
+    if ticket_val:
+        if not consume_sync_ticket(ticket_val):
+            raise HTTPException(status_code=403, detail="Ticket de synchronisation invalide ou expiré.")
+        auth_proof = ticket_val
+    elif is_installer_authenticated(request):
+        auth_proof = request.headers.get("X-Installer-Token", "").strip()
+    elif has_pwd:
+        raise HTTPException(
+            status_code=403,
+            detail="Déverrouillage Installateur ou QR Code de transfert requis pour exporter les identifiants Cloud.",
+        )
+    else:
+        auth_proof = ""
+
+    creds = {
+        k: str(settings.get(k, ""))
+        for k in SYNCABLE_CLOUD_KEYS
+        if settings.get(k) not in (None, "")
+    }
+    if not creds:
+        raise HTTPException(status_code=404, detail="Aucun identifiant Cloud ou paramètre météo configuré sur ce conteneur.")
+
+    envelope = encrypt_cred_envelope(creds, api_tok, auth_proof)
+    active_mode = await asyncio.to_thread(get_active_mode)
+    db_log("INFO", "SECURITY", "Export chiffré AES-256-GCM des paramètres Cloud/Météo vers application.", active_mode)
+    return JSONResponse(content={"status": "ok", "envelope": envelope}, headers={"Cache-Control": "no-store"})
+
+
+@router.post(
+    "/system/cloud-credentials/import",
+    responses={
+        400: {"description": "Enveloppe chiffrée invalide ou expirée"},
+        401: {"description": "Jeton API du conteneur requis ou invalide"},
+        403: {"description": "Authentification installateur requise"},
+    },
+)
+async def api_system_cloud_credentials_import(payload: CloudSyncImportPayload, request: Request):
+    """Importe dans le conteneur des identifiants Cloud chiffrés en AES-256-GCM depuis l'application."""
+    api_tok = _require_valid_api_token(request)
+    current = await asyncio.to_thread(get_settings_dict)
+    has_existing_pwd = bool((current.get("agua_password") or "").strip())
+
+    ticket_val = (payload.sync_ticket or "").strip() if payload.sync_ticket else ""
+    if ticket_val:
+        if not consume_sync_ticket(ticket_val):
+            raise HTTPException(status_code=403, detail="Ticket de synchronisation invalide ou expiré.")
+        auth_proof = ticket_val
+    elif is_installer_authenticated(request):
+        auth_proof = request.headers.get("X-Installer-Token", "").strip()
+    else:
+        auth_proof = ""
+
+    try:
+        creds = decrypt_cred_envelope(payload.envelope, api_tok, auth_proof)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Enveloppe chiffrée invalide ou expirée : {exc}") from exc
+
+    has_incoming_cloud_auth = bool((creds.get("agua_email") or "").strip() or (creds.get("agua_password") or "").strip())
+    if has_existing_pwd and has_incoming_cloud_auth and not auth_proof:
+        raise HTTPException(
+            status_code=403,
+            detail="Authentification Installateur ou QR Code de transfert requis pour remplacer les identifiants Cloud du conteneur.",
+        )
+
+    to_save = {
+        k: v
+        for k, v in creds.items()
+        if k in SYNCABLE_CLOUD_KEYS and v not in (None, "", "********")
+    }
+    has_valid_cloud = bool((to_save.get("agua_email") or "").strip() and (to_save.get("agua_password") or "").strip())
+    has_valid_weather = bool((to_save.get("weather_lat") or "").strip() and (to_save.get("weather_lon") or "").strip())
+    if not has_valid_cloud and not has_valid_weather:
+        raise HTTPException(status_code=400, detail="Aucune donnée Cloud ou Météo valide à importer.")
+
+    if payload.activate_cloud_mode and has_valid_cloud:
+        to_save["comm_mode"] = "agua_cloud"
+
+    await _validate_and_normalize_settings(to_save)
+    await asyncio.to_thread(_persist_settings_dict, to_save)
+    if has_incoming_cloud_auth:
+        agua_client.reset_session()
+    if "agua_password" in to_save and to_save["agua_password"] != str(current.get("agua_password") or ""):
+        clear_installer_sessions()
+
+    new_mode = await asyncio.to_thread(get_active_mode)
+    db_log("INFO", "SECURITY", "Import chiffré AES-256-GCM des paramètres Cloud/Météo depuis application.", new_mode)
+    await collect_telemetry_cycle(new_mode)
+    return JSONResponse(content={"status": "ok", "comm_mode": new_mode}, headers={"Cache-Control": "no-store"})
 
 
 @router.get(

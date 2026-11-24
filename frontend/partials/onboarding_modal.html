@@ -96,9 +96,15 @@
 
         <!-- Formulaire B : Conteneur Mode + -->
         <div id="onb-panel-container" class="hidden space-y-3 text-xs bg-slate-950/70 border border-slate-800 rounded-xl p-4">
-          <p class="text-gray-300 leading-relaxed">
-            Entrez l'URL HTTP locale de votre conteneur <code class="text-indigo-300 font-mono">stove-cockpit-server</code> et le Token API affiché dans ses paramètres (onglet Système &gt; Appairage Mobile).
-          </p>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <p class="text-gray-300 leading-relaxed flex-1">
+              Scannez le QR Code affiché dans votre serveur <code class="text-indigo-300 font-mono">stove-cockpit-server</code> ou saisissez son URL et son Token API.
+            </p>
+            <button type="button" onclick="startPairingQrScan('onboarding')"
+              class="px-3.5 py-2 rounded-lg bg-indigo-700 hover:bg-indigo-600 text-white border border-indigo-500 font-bold shadow-sm flex items-center gap-1.5 shrink-0 cursor-pointer">
+              <span>📷</span><span>Scanner le QR Code du Conteneur</span>
+            </button>
+          </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label for="onb-plus-url" class="text-gray-300 font-semibold block mb-1">URL HTTP du Conteneur</label>

@@ -5,6 +5,15 @@ import { decodeBufferToTelemetry, detectCapabilities, evaluateBuffer, parseRegis
 import { evaluateMicronovaFormula } from "./micronova/formula_eval.js";
 import { clearAllPrefs, loadAllPrefs, savePrefsPatch } from "./storage/secure_prefs.js";
 import { FRONTEND_VERSION, FRONTEND_VERSION_TAG, formatVersionTag, versionsDiffer } from "./version.js";
+import {
+  buildPairingQrPayload,
+  decodeQrFromRgba,
+  isNativeQrScannerAvailable,
+  parsePairingQrPayload,
+  renderQrSvg,
+  scanNativeQr,
+} from "./qr/pairing_qr.js";
+import { decryptCredEnvelope, encryptCredEnvelope } from "./security/cred_envelope.js";
 
 const providerManager = new ProviderManager();
 
@@ -25,6 +34,14 @@ window.StoveCore = {
   loadAllPrefs,
   savePrefsPatch,
   clearAllPrefs,
+  buildPairingQrPayload,
+  parsePairingQrPayload,
+  renderQrSvg,
+  decodeQrFromRgba,
+  isNativeQrScannerAvailable,
+  scanNativeQr,
+  encryptCredEnvelope,
+  decryptCredEnvelope,
 };
 
 window.stoveProvider = providerManager;

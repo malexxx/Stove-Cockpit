@@ -60,9 +60,11 @@ function toggleSettingsAccordion(accId, forceOpen = false) {
 function _isSettingsAccordionAllowedInMode(item) {
   const appMode = window.stoveProvider ? window.stoveProvider.getMode() : "standalone";
   const isContainer = appMode === "container";
+  const servedByContainer = Boolean(window.stoveProvider?.isServedByContainer?.());
   const req = item.dataset.requires || "";
   if (req === "container" && !isContainer) return false;
   if (req === "standalone-only" && isContainer) return false;
+  if (req === "client-app" && servedByContainer) return false;
   if (item.dataset.accId === "zones") {
     const caps = typeof getActiveCapabilities === "function" ? getActiveCapabilities() : null;
     if (caps && Array.isArray(caps.ducts) && caps.ducts.length === 0) return false;
@@ -294,7 +296,7 @@ function updateSettingsAccordionSummaries() {
 
   // 6. Système
   const rtcEl = document.getElementById("inst-clock-val");
-  const frontVer = typeof getFrontendVersionLabel === "function" ? getFrontendVersionLabel() : "v0.0.3";
+  const frontVer = typeof getFrontendVersionLabel === "function" ? getFrontendVersionLabel() : "v0.0.4";
   const backVer = typeof getBackendVersionLabel === "function" ? getBackendVersionLabel() : "";
   const rtc = rtcEl ? rtcEl.textContent.trim() : "--:--";
   const verSummary = backVer ? `Front ${frontVer} • Back ${backVer}` : `Front ${frontVer}`;
@@ -367,8 +369,10 @@ function openConfigModal(highlightFieldId = null) {
 
   if (highlightFieldId) {
     let targetAcc = "zones";
-    if (["cfg-city", "cfg-lat", "cfg-lon", "cfg-bags-stock", "cfg-bag-price", "cfg-hopper-capacity"].includes(highlightFieldId)) {
-      targetAcc = "home";
+    if (["cfg-city", "cfg-lat", "cfg-lon"].includes(highlightFieldId)) {
+      targetAcc = "weather";
+    } else if (["cfg-bags-stock", "cfg-bag-price", "cfg-hopper-capacity"].includes(highlightFieldId)) {
+      targetAcc = "pellets";
     } else if (["cfg-pass", "cfg-email", "cfg-mode", "cfg-gw", "cfg-interval", "cfg-agua-brand"].includes(highlightFieldId)) {
       targetAcc = "conn";
     } else if (["cfg-app-mode", "cfg-plus-url", "cfg-plus-token"].includes(highlightFieldId)) {

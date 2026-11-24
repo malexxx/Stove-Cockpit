@@ -93,6 +93,7 @@ function closeWeatherModal() {
 }
 
 function renderWeatherModalData() {
+  const isContainer = Boolean(window.stoveProvider?.isContainerActive?.());
   const city = (currentSettings && currentSettings.weather_city) || "Paris (75000)";
   const lat = (currentSettings && currentSettings.weather_lat) || "48.8566";
   const lon = (currentSettings && currentSettings.weather_lon) || "2.3522";
@@ -105,6 +106,22 @@ function renderWeatherModalData() {
   const tNum = tempExt !== undefined && tempExt !== null ? Number(tempExt) : null;
   const djuNow = tNum !== null && !isNaN(tNum) ? Math.max(0, 19.0 - tNum) : null;
   const estKg = djuNow !== null ? Math.max(3.5, djuNow * 0.78) : null;
+
+  const titleEl = document.getElementById("w-modal-title");
+  if (titleEl) titleEl.textContent = isContainer ? "Météo & DJU" : "Météo Extérieure";
+
+  const kpiGridEl = document.getElementById("w-modal-kpi-grid");
+  if (kpiGridEl) {
+    kpiGridEl.className = isContainer
+      ? "grid grid-cols-2 gap-2.5 text-xs my-2"
+      : "grid grid-cols-3 gap-2.5 text-xs my-2";
+  }
+
+  const djuCardEl = document.getElementById("w-modal-dju-card");
+  if (djuCardEl) djuCardEl.classList.toggle("hidden", !isContainer);
+
+  const forecastSubEl = document.getElementById("w-modal-forecast-subtitle");
+  if (forecastSubEl) forecastSubEl.textContent = isContainer ? "Min / Moy / Max • Besoin Δ°" : "Min / Moy / Max";
 
   const cityEl = document.getElementById("w-modal-city");
   if (cityEl) cityEl.textContent = city;
@@ -119,9 +136,9 @@ function renderWeatherModalData() {
   if (windEl) windEl.textContent = windExt !== undefined && windExt !== null ? Number(windExt).toFixed(1) : "--";
 
   const djuEl = document.getElementById("w-modal-dju");
-  if (djuEl) djuEl.textContent = djuNow !== null ? djuNow.toFixed(1) : "--";
+  if (djuEl) djuEl.textContent = isContainer && djuNow !== null ? djuNow.toFixed(1) : "--";
   const estKgEl = document.getElementById("w-modal-est-kg");
-  if (estKgEl) estKgEl.textContent = estKg !== null ? estKg.toFixed(1) : "--";
+  if (estKgEl) estKgEl.textContent = isContainer && estKg !== null ? estKg.toFixed(1) : "--";
 
   const updatedEl = document.getElementById("w-modal-updated");
   if (updatedEl) {
@@ -154,6 +171,9 @@ function renderWeatherModalData() {
     const maxT = maxs[idx] !== undefined ? Number(maxs[idx]) : (meanT + 3.2);
     const djuDay = Math.max(0, 19.0 - meanT);
     const kgDay = Math.max(3.5, djuDay * 0.78);
+    const djuCol = isContainer
+      ? `<span class="text-[11px] text-orange-300 font-semibold text-right">Δ° ${djuDay.toFixed(1)} (~${kgDay.toFixed(1)}kg)</span>`
+      : "";
 
     return `
       <div class="py-1.5 flex items-center justify-between gap-2 tabular-nums">
@@ -161,7 +181,7 @@ function renderWeatherModalData() {
         <span class="text-[11px] text-gray-400">
           <b class="text-cyan-400">${minT.toFixed(1)}°</b> / <b class="text-white">${meanT.toFixed(1)}°</b> / <b class="text-amber-400">${maxT.toFixed(1)}°</b>
         </span>
-        <span class="text-[11px] text-orange-300 font-semibold text-right">Δ° ${djuDay.toFixed(1)} (~${kgDay.toFixed(1)}kg)</span>
+        ${djuCol}
       </div>
     `;
   }).join("");

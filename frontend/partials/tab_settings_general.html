@@ -245,8 +245,8 @@
       <!-- =================================================================== -->
       <!-- ACCORDÉON 2B : OPTION « + » (CONTENEUR COMPAGNON & MODE DÉMO)       -->
       <!-- =================================================================== -->
-      <div class="settings-acc-item card border-l-4 border-l-indigo-500 overflow-hidden" data-acc-id="plus"
-        data-keywords="mode plus conteneur compagnon docker http lan token api repli 4g demo onboarding">
+      <div class="settings-acc-item card border-l-4 border-l-indigo-500 overflow-hidden" data-acc-id="plus" data-requires="client-app"
+        data-keywords="mode plus conteneur compagnon docker http lan token api repli 4g demo onboarding qr code sync">
         <button type="button" onclick="toggleSettingsAccordion('plus')"
           class="w-full px-4 py-3.5 flex items-center justify-between gap-3 text-left hover:bg-gray-800/40 transition cursor-pointer">
           <div class="flex items-center gap-2.5 min-w-0">
@@ -299,10 +299,34 @@
             </label>
           </div>
 
+          <div class="rounded-xl p-3 bg-indigo-950/25 border border-indigo-800/60 space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span class="font-semibold text-indigo-200 flex items-center gap-1.5">
+                <span>🔐</span><span>Synchronisation chiffrée Cloud &amp; Météo (AES-256-GCM)</span>
+              </span>
+              <span class="text-[10px] text-indigo-300/80 font-mono">Bout en bout</span>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" onclick="syncCloudCredentialsToContainerUI()"
+                class="px-3 py-1.5 rounded-lg bg-emerald-800/80 hover:bg-emerald-700 text-white border border-emerald-600/70 font-semibold cursor-pointer flex items-center gap-1.5">
+                <span>📤</span><span>Envoyer App → Conteneur (Cloud &amp; Météo)</span>
+              </button>
+              <button type="button" onclick="syncCloudCredentialsFromContainerUI()"
+                class="px-3 py-1.5 rounded-lg bg-sky-800/80 hover:bg-sky-700 text-white border border-sky-600/70 font-semibold cursor-pointer flex items-center gap-1.5">
+                <span>📥</span><span>Récupérer Conteneur → App (Cloud &amp; Météo)</span>
+              </button>
+            </div>
+            <div id="cfg-cloud-sync-status" class="hidden rounded-lg p-2 text-[11px] font-mono"></div>
+          </div>
+
           <div id="cfg-plus-diag" class="hidden rounded-lg p-2.5 text-[11px] font-mono"></div>
 
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="flex flex-wrap gap-2">
+              <button type="button" onclick="startPairingQrScan('settings')"
+                class="px-3 py-2 rounded-lg bg-indigo-700 hover:bg-indigo-600 text-white border border-indigo-500 font-semibold cursor-pointer">
+                📷 Scanner le QR Code
+              </button>
               <button type="button" onclick="testPlusContainerFromSettings()"
                 class="px-3 py-2 rounded-lg bg-sky-700 hover:bg-sky-600 text-white font-semibold cursor-pointer">
                 📡 Tester le Conteneur
@@ -427,7 +451,7 @@
               <span class="text-xs font-bold text-[#e8b693] flex items-center gap-1.5">
                 <span>🪵</span><span>Stock &amp; Trémie (Sacs 15 kg)</span>
               </span>
-              <span class="text-[10px] text-[#c98a5e] bg-[#3b2014] border border-[#6e3b1f] px-2 py-0.5 rounded">Mode « + »</span>
+              <span class="text-[10px] text-[#c98a5e] bg-[#3b2014] border border-[#6e3b1f] px-2 py-0.5 rounded">Trémie &amp; Stock</span>
             </div>
             <div class="grid grid-cols-3 gap-2.5 text-xs">
               <div>

@@ -227,7 +227,7 @@ function getFrontendVersionLabel() {
     window.stoveProvider?.getFrontendVersion?.() ||
     window.STOVE_FRONTEND_VERSION ||
     window.StoveCore?.frontendVersionTag ||
-    "v0.0.3"
+    "v0.0.4"
   );
 }
 
@@ -293,6 +293,7 @@ function updateStatusPillBorder() {
 // Met à jour l'indicateur visuel de connexion au conteneur Docker Stove Cockpit (picto Docker)
 function updateContainerConnectionIndicator(overrideStatus, message) {
   const verEl = document.getElementById("hdr-container-version");
+  const sepEl = document.getElementById("hdr-container-sep");
   const cfgDiagContainer = document.getElementById("cfg-diag-container");
 
   const appMode = window.stoveProvider ? window.stoveProvider.getMode() : "container";
@@ -301,23 +302,13 @@ function updateContainerConnectionIndicator(overrideStatus, message) {
 
   if (appMode !== "container") {
     connectionState.containerStatus = "connected";
-    if (verEl) {
-      const clsMap = {
-        standalone: "text-amber-400",
-        fallback: "text-sky-400",
-        demo: "text-emerald-400",
-      };
-      const titleMap = {
-        standalone: `Mode Autonome (App ${frontVer}, sans conteneur)`,
-        fallback: `Mode Repli Cloud (App ${frontVer}, conteneur hors portée)`,
-        demo: `Mode Démo (App ${frontVer}, hors-ligne)`,
-      };
-      verEl.className = `flex items-center justify-center w-4 h-4 sm:w-[18px] sm:h-[18px] ${clsMap[appMode] || "text-gray-400"}`;
-      verEl.title = titleMap[appMode] || `Mode Autonome (App ${frontVer})`;
-    }
+    if (sepEl) sepEl.classList.add("hidden");
+    if (verEl) verEl.classList.add("hidden");
     updateStatusPillBorder();
     return;
   }
+
+  if (sepEl) sepEl.classList.remove("hidden");
 
   const effectiveStatus = overrideStatus || (connectionState.isServerConnected ? "connected" : "disconnected");
   connectionState.containerStatus = effectiveStatus;
