@@ -76,16 +76,39 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug
+      - name: Prepare Release Assets
+        run: |
+          mkdir -p release-assets
+          shopt -s nullglob
+          APK_RELEASE=(frontend/android/app/build/outputs/apk/release/*.apk)
+          APK_DEBUG=(frontend/android/app/build/outputs/apk/debug/*.apk)
+          AAB_RELEASE=(frontend/android/app/build/outputs/bundle/release/*.aab)
+          if [ ${#APK_RELEASE[@]} -gt 0 ]; then
+            cp "${APK_RELEASE[0]}" "release-assets/StoveCockpit-${GITHUB_REF_NAME}.apk"
+          elif [ ${#APK_DEBUG[@]} -gt 0 ]; then
+            cp "${APK_DEBUG[0]}" "release-assets/StoveCockpit-${GITHUB_REF_NAME}-debug.apk"
+          fi
+          if [ ${#AAB_RELEASE[@]} -gt 0 ]; then
+            cp "${AAB_RELEASE[0]}" "release-assets/StoveCockpit-${GITHUB_REF_NAME}.aab"
+          fi
+          ls -lh release-assets/
       - name: Upload Android Artifacts
         uses: actions/upload-artifact@v7
         with:
           name: stove-cockpit-android
-          path: |
-            frontend/android/app/build/outputs/apk/**/*.apk
-            frontend/android/app/build/outputs/bundle/**/*.aab
+          path: release-assets/*
           if-no-files-found: warn
+      - name: Attach APK/AAB to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/*.apk
+            release-assets/*.aab
+          fail_on_unmatched_files: false
       - name: Publish to Google Play Internal Track (if configured)
         if: startsWith(github.ref, 'refs/tags/v') && steps.keystore.outputs.signed == 'true' && steps.keystore.outputs.has_play_json == 'true'
+        continue-on-error: true
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
@@ -93,14 +116,6 @@ jobs:
           releaseFiles: frontend/android/app/build/outputs/bundle/release/app-release.aab
           track: internal
           status: completed
-      - name: Attach APK/AAB to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            frontend/android/app/build/outputs/apk/**/*.apk
-            frontend/android/app/build/outputs/bundle/**/*.aab
-          fail_on_unmatched_files: false
       - name: Cleanup Keystore
         if: always()
         run: rm -f /tmp/release.keystore
