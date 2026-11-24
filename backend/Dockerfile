@@ -19,13 +19,13 @@ FROM python:3.12-slim-trixie
 
 LABEL org.opencontainers.image.title="Stove Cockpit Server" \
     org.opencontainers.image.description="Supervision 24/7, historique SQLite et passerelle Matter locale pour poêles Micronova (HTTP pur)" \
-    org.opencontainers.image.version="0.0.1" \
+    org.opencontainers.image.version="0.0.2" \
     org.opencontainers.image.licenses="MIT" \
     org.opencontainers.image.source="https://github.com/malexxx/Stove-Cockpit" \
     org.opencontainers.image.vendor="Stove Cockpit"
 
-ARG APP_VERSION=0.0.1
-ARG DOCKER_VERSION=v0.0.1
+ARG APP_VERSION=0.0.2
+ARG DOCKER_VERSION=v0.0.2
 ARG GIT_COMMIT=""
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
