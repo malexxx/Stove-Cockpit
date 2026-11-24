@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Left concentric outer arc (ventilation) -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M32.93,71.68 A27.5,27.5 0 0 1 32.93,36.32"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="3.4" />
+    <!-- Right concentric outer arc (power) -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M75.07,36.32 A27.5,27.5 0 0 1 75.07,71.68"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="3.4" />
+    <!-- Central open-bottom Tri-Arc temperature ring -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M39.86,68.14 A20,20 0 1 1 68.14,68.14"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="4.2" />
+    <!-- Center minimalist flame -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,40.66 c-5.29,6.44 -8.51,11.04 -8.51,16.33 c0,5.29 3.80,9.43 8.51,9.43 s8.51,-4.14 8.51,-9.43 c0,-2.88 -1.04,-5.75 -2.76,-8.40 c-0.81,2.53 -2.53,3.80 -3.91,3.80 c-1.84,0 -3.11,-1.84 -2.76,-5.06 c0.23,-1.96 1.15,-4.26 0.92,-6.67 z" />
+</vector>

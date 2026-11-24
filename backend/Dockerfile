@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:22-trixie-slim AS frontend-builder
+FROM node:26-trixie-slim AS frontend-builder
 
 WORKDIR /src
 COPY shared/ ./shared/
@@ -9,7 +9,7 @@ RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 
-FROM node:22-trixie-slim AS node-builder
+FROM node:26-trixie-slim AS node-builder
 
 WORKDIR /build
 COPY backend/matter_bridge/package.json backend/matter_bridge/package-lock.json ./
