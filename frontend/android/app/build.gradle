@@ -7,7 +7,7 @@ android {
         applicationId "io.github.malexxx.stovecockpit"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode (System.getenv("ANDROID_VERSION_CODE") ?: "1").toInteger()
+        versionCode = (System.getenv("ANDROID_VERSION_CODE") ?: "1").toInteger()
         versionName "0.0.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
