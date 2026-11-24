@@ -251,6 +251,17 @@ export class DemoProvider {
       weather_temp_ext: weather?.weather_temp_ext ?? 9.5,
       weather_humidity: weather?.weather_humidity ?? 68,
       weather_wind_kmh: weather?.weather_wind_kmh ?? 12,
+      weather_details: (weather && Array.isArray(weather.forecast_daily_means) && weather.forecast_daily_means.length > 0)
+        ? weather
+        : {
+          weather_temp_ext: weather?.weather_temp_ext ?? 9.5,
+          weather_humidity: weather?.weather_humidity ?? 68,
+          weather_wind_kmh: weather?.weather_wind_kmh ?? 12,
+          forecast_daily_means: [9.5, 8.4, 7.9, 9.1, 10.2, 8.8, 7.6],
+          forecast_daily_mins: [5.2, 4.1, 3.8, 5.0, 6.1, 4.7, 3.5],
+          forecast_daily_maxs: [13.4, 12.2, 11.6, 13.0, 14.1, 12.6, 11.4],
+          forecast_daily_dates: [],
+        },
       raw_buffer_json: JSON.stringify({ 8: stCode, 11: this.state.power_actual, 103: this.state.temp_ambient }),
     };
 

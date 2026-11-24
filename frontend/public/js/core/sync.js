@@ -26,7 +26,13 @@ function isTabVisible(tabId) {
  * @param {boolean} [updateSeries=true] Si true, met à jour la série temporelle des graphiques.
  */
 function applyDashboardState(data, updateSeries = true) {
+  const prevWeatherDetails = latestData?.weather_details;
   latestData = data.latest || latestData || {};
+  if (!latestData.weather_details && data.weather_data) {
+    latestData.weather_details = data.weather_data;
+  } else if (!latestData.weather_details && prevWeatherDetails) {
+    latestData.weather_details = prevWeatherDetails;
+  }
   if (data.comm_status) {
     connectionState.commStatus = data.comm_status;
   }

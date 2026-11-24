@@ -441,6 +441,7 @@ export function decodeBufferToTelemetry(rawBuf, registerMap, settings = {}, weat
     weather_temp_ext: weather?.weather_temp_ext ?? null,
     weather_humidity: weather?.weather_humidity ?? null,
     weather_wind_kmh: weather?.weather_wind_kmh ?? null,
+    weather_details: weather && typeof weather === "object" ? weather : null,
     raw_buffer_json: JSON.stringify(rawBuf),
   };
 

@@ -78,8 +78,8 @@ os.makedirs(DATA_DIR, exist_ok=True)
 def _resolve_frontend_dist_dir() -> str:
     candidates = [
         os.environ.get("STOVE_FRONTEND_DIST", "").strip(),
-        "/app/frontend_dist",
         os.path.join(BASE_DIR, "frontend_dist"),
+        "/app/frontend_dist",
         os.path.join(REPO_ROOT, "frontend", "dist"),
         os.path.join(BASE_DIR, "static"),
     ]

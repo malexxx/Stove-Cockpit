@@ -144,8 +144,8 @@ def get_update_settings() -> dict[str, Any]:
         s = get_settings_dict()
     except Exception:
         s = {}
-    env_chan = os.environ.get("NOBIS_UPDATE_CHANNEL", "v2").strip().lower()
-    default_chan = env_chan if env_chan in VALID_CHANNELS else "v2"
+    env_chan = os.environ.get("NOBIS_UPDATE_CHANNEL", "main").strip().lower()
+    default_chan = env_chan if env_chan in VALID_CHANNELS else "main"
     raw_chan = (s.get("update_channel") or default_chan).strip().lower()
     channel = raw_chan if raw_chan in VALID_CHANNELS else default_chan
     auto_check = str(s.get("update_auto_check", "1")).strip().lower() in ("1", "true", "yes", "on")
@@ -279,16 +279,19 @@ async def _fetch_github_json(url: str, timeout: float = 15.0) -> Any:
 
 
 async def _fetch_remote_app_version(repo: str, sha: str) -> str:
-    raw_url = _validate_github_url(f"https://raw.githubusercontent.com/{repo}/{sha}/config.py")
-    try:
-        async with borrow_http_client(timeout=8.0) as client:
-            resp = await client.get(raw_url, headers=_github_headers(include_auth=False), timeout=8.0)
-        if resp.status_code != 200:
-            return ""
-        match = _APP_VERSION_RE.search(resp.text)
-        return match.group(1) if match else ""
-    except (httpx.RequestError, ValueError):
-        return ""
+    for rel_path in ("backend/config.py", "config.py"):
+        raw_url = _validate_github_url(f"https://raw.githubusercontent.com/{repo}/{sha}/{rel_path}")
+        try:
+            async with borrow_http_client(timeout=8.0) as client:
+                resp = await client.get(raw_url, headers=_github_headers(include_auth=False), timeout=8.0)
+            if resp.status_code != 200:
+                continue
+            match = _APP_VERSION_RE.search(resp.text)
+            if match:
+                return match.group(1)
+        except (httpx.RequestError, ValueError):
+            continue
+    return ""
 
 
 def _resolve_channel_arg(channel: str | None) -> str:
@@ -738,6 +741,30 @@ def _make_release_id(version: str, sha: str, releases_root: str) -> str:
     return candidate
 
 
+def _flatten_monorepo_stage_if_needed(stage_dir: str) -> None:
+    """Aplatit la structure monorepo (backend/ + shared/) si l'archive contient backend/server.py."""
+    if os.path.isfile(os.path.join(stage_dir, "server.py")):
+        return
+    backend_dir = os.path.join(stage_dir, "backend")
+    if not os.path.isfile(os.path.join(backend_dir, "server.py")):
+        return
+
+    for entry in os.listdir(backend_dir):
+        src = os.path.join(backend_dir, entry)
+        dst = os.path.join(stage_dir, entry)
+        if os.path.exists(dst):
+            if os.path.isdir(dst):
+                shutil.rmtree(dst, ignore_errors=True)
+            else:
+                os.remove(dst)
+        shutil.move(src, dst)
+    shutil.rmtree(backend_dir, ignore_errors=True)
+
+    frontend_src_dir = os.path.join(stage_dir, "frontend")
+    if os.path.isdir(frontend_src_dir):
+        shutil.rmtree(frontend_src_dir, ignore_errors=True)
+
+
 def _stage_and_promote_release(
     tar_path: str,
     data_dir: str,
@@ -753,6 +780,7 @@ def _stage_and_promote_release(
     stage_dir = tempfile.mkdtemp(prefix="stage_", dir=updates_root)
     try:
         file_count = _extract_tarball_safely(tar_path, stage_dir)
+        _flatten_monorepo_stage_if_needed(stage_dir)
         meta = _validate_staged_release(stage_dir, image_dir)
         py_deps = _sync_python_dependencies_if_needed(stage_dir, image_dir)
         _link_matter_node_modules(stage_dir, image_dir)

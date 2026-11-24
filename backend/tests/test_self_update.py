@@ -23,9 +23,11 @@ from services.update_bootstrap import (
 )
 from services.update_service import (
     _extract_tarball_safely,
+    _flatten_monorepo_stage_if_needed,
     _validate_github_url,
     _validate_staged_release,
     apply_internal_update,
+    get_update_settings,
     rollback_internal_update,
 )
 import server as server_mod
@@ -283,6 +285,57 @@ class TestSelfUpdateSystem(BugBountyTestCase):
             _extract_tarball_safely(syntax_tar, syn_dir)
             with self.assertRaises(ValueError):
                 _validate_staged_release(syn_dir, config.BASE_DIR)
+
+    def test_default_update_channel_is_main_and_monorepo_tarball_flattens(self):
+        with (
+            patch.dict(os.environ, {"NOBIS_UPDATE_CHANNEL": "v2"}, clear=False),
+            patch("services.update_service.get_settings_dict", return_value={"update_channel": "v2"}),
+        ):
+            self.assertEqual(get_update_settings()["channel"], "main")
+
+        with (
+            patch.dict(os.environ, {}, clear=False),
+            patch("services.update_service.get_settings_dict", return_value={}),
+        ):
+            os.environ.pop("NOBIS_UPDATE_CHANNEL", None)
+            self.assertEqual(get_update_settings()["channel"], "main")
+
+        with open(os.path.join(config.BASE_DIR, "requirements.txt"), encoding="utf-8") as fh:
+            req_txt = fh.read()
+        with open(os.path.join(config.BASE_DIR, "matter_bridge", "package.json"), encoding="utf-8") as fh:
+            pkg_json = fh.read()
+
+        mono_files = {
+            "malexxx-Stove-Cockpit-abcdef1/backend/server.py": "def main():\n    pass\n",
+            "malexxx-Stove-Cockpit-abcdef1/backend/main.py": "app = object()\n",
+            "malexxx-Stove-Cockpit-abcdef1/backend/config.py": 'APP_VERSION = "0.0.5"\n',
+            "malexxx-Stove-Cockpit-abcdef1/backend/requirements.txt": req_txt,
+            "malexxx-Stove-Cockpit-abcdef1/backend/routers/admin.py": "# router\n",
+            "malexxx-Stove-Cockpit-abcdef1/backend/services/update_service.py": "# service\n",
+            "malexxx-Stove-Cockpit-abcdef1/backend/matter_bridge/package.json": pkg_json,
+            "malexxx-Stove-Cockpit-abcdef1/shared/brands.json": '{"brands":[]}\n',
+            "malexxx-Stove-Cockpit-abcdef1/frontend/package.json": '{"name":"fe"}\n',
+        }
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+            for arc_name, text in mono_files.items():
+                raw = text.encode("utf-8")
+                ti = tarfile.TarInfo(arc_name)
+                ti.size = len(raw)
+                tf.addfile(ti, io.BytesIO(raw))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tar_path = os.path.join(tmpdir, "mono.tar.gz")
+            with open(tar_path, "wb") as fh:
+                fh.write(buf.getvalue())
+            stage_dir = os.path.join(tmpdir, "stage")
+            _extract_tarball_safely(tar_path, stage_dir)
+            _flatten_monorepo_stage_if_needed(stage_dir)
+            meta = _validate_staged_release(stage_dir, config.BASE_DIR)
+            self.assertEqual(meta["app_version"], "0.0.5")
+            self.assertTrue(os.path.isfile(os.path.join(stage_dir, "shared", "brands.json")))
+            self.assertFalse(os.path.exists(os.path.join(stage_dir, "backend")))
+            self.assertFalse(os.path.exists(os.path.join(stage_dir, "frontend")))
 
     def test_end_to_end_apply_and_rollback_with_synthetic_tarball(self):
         remote_sha = "abcdef1234567890" + "0" * 24

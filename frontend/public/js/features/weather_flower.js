@@ -85,6 +85,23 @@ function openWeatherModal() {
   if (!modal) return;
   renderWeatherModalData();
   modal.classList.remove("hidden");
+
+  const hasForecast = Array.isArray(latestData?.weather_details?.forecast_daily_means)
+    && latestData.weather_details.forecast_daily_means.length > 0;
+  if (!hasForecast && !window.stoveProvider?.isContainerActive?.() && window.stoveProvider?.weather?.fetchCurrent) {
+    const lat = (currentSettings && currentSettings.weather_lat) || window.stoveProvider?.prefs?.weather_lat || "48.8566";
+    const lon = (currentSettings && currentSettings.weather_lon) || window.stoveProvider?.prefs?.weather_lon || "2.3522";
+    window.stoveProvider.weather.fetchCurrent(lat, lon, true).then((w) => {
+      if (w && Array.isArray(w.forecast_daily_means) && w.forecast_daily_means.length > 0) {
+        if (!latestData || typeof latestData !== "object") latestData = {};
+        latestData.weather_details = w;
+        if (w.weather_temp_ext !== null && w.weather_temp_ext !== undefined) latestData.weather_temp_ext = w.weather_temp_ext;
+        if (w.weather_humidity !== null && w.weather_humidity !== undefined) latestData.weather_humidity = w.weather_humidity;
+        if (w.weather_wind_kmh !== null && w.weather_wind_kmh !== undefined) latestData.weather_wind_kmh = w.weather_wind_kmh;
+        renderWeatherModalData();
+      }
+    }).catch(() => {});
+  }
 }
 
 function closeWeatherModal() {
