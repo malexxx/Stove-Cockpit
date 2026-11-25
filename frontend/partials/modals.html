@@ -226,6 +226,7 @@
       <div class="p-3 bg-gray-950/50 border-b border-gray-800/80 flex flex-wrap items-center justify-between gap-2.5">
         <div class="flex items-center gap-2 flex-1 min-w-[200px]">
           <input id="offsets-modal-search" type="text"
+            aria-label="Rechercher un offset" title="Rechercher un offset"
             placeholder="Rechercher par offset ou nom (ex: 103, temp, fan, pwr...)"
             oninput="filterOffsetsModal(this.value)"
             class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white w-full placeholder-gray-500 focus:outline-none focus:border-cyan-500" />
@@ -291,6 +292,7 @@
         </div>
         <div class="flex items-center gap-2 flex-1 min-w-[200px]">
           <input id="agua-regmap-search" type="text"
+            aria-label="Filtrer la cartographie Cloud Agua" title="Filtrer la cartographie Cloud Agua"
             placeholder="Filtrer par reg_key, offset, libellé (ex: 33128, standby, canalization)..."
             oninput="filterAguaRegistersMap(this.value)"
             class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white w-full placeholder-gray-500 focus:outline-none focus:border-indigo-500" />
@@ -517,7 +519,7 @@
       <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-800 text-xs">
         <label class="px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 font-semibold cursor-pointer flex items-center gap-1.5">
           <span>🖼️</span><span>Importer une image QR</span>
-          <input id="qr-scanner-file" type="file" accept="image/*" onchange="onPairingQrImageSelected(event)" class="hidden" />
+          <input id="qr-scanner-file" type="file" aria-label="Importer une image de QR Code" title="Importer une image QR" accept="image/*" onchange="onPairingQrImageSelected(event)" class="hidden" />
         </label>
         <button type="button" onclick="closePairingQrScanner()"
           class="px-3.5 py-2 rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-300 border border-gray-700 font-semibold cursor-pointer">
