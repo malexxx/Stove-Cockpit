@@ -114,7 +114,7 @@ const COCKPIT_UI_MODES = [
     shortName: "Intentions",
     badge: "Hue · Modèle Mental",
     inspiration: "Philips Hue / Sonos",
-    desc: "4 cartes d'intention claires (Confort Auto, Coup de chaud, Soirée calme, Éco) + tiroir manuel.",
+    desc: "3 cartes d'intention claires (Confort Auto, Coup de chaud, Soirée calme) + tiroir manuel.",
     previewSvg: `<svg viewBox="0 0 80 48" class="w-full h-12" fill="none">
       <rect x="10" y="4" width="60" height="10" rx="3" fill="#0f172a" stroke="#f97316" stroke-width="1.2"/>
       <rect x="10" y="17" width="28" height="11" rx="4" fill="#0f172a" stroke="#06b6d4" stroke-width="1.3"/>
@@ -565,15 +565,6 @@ function renderCockpitModeBar(T, zone, compact = false) {
         class="flex-1 ${compact ? "h-11" : "h-13 py-2"} rounded-2xl border flex flex-col items-center justify-center transition cursor-pointer ${boostCls}">
         <span class="text-lg leading-none">🚀</span>
         <span class="text-[10px] font-bold mt-0.5">${T.pwfVal === 1 ? "Actif" : (T.pwfVal === 2 ? "Prog" : "Boost")}</span>
-      </button>
-    `);
-  }
-  if (caps.has_eco !== false) {
-    buttons.push(`
-      <button type="button" onclick="toggleTriArcOptionBubble('eco')" title="Mode Éco / Confort Clima"
-        class="flex-1 ${compact ? "h-11" : "h-13 py-2"} rounded-2xl border flex flex-col items-center justify-center transition cursor-pointer ${T.isEco ? "bg-emerald-950/75 border-emerald-400 text-emerald-200" : "bg-slate-900/90 border-slate-700 text-slate-300 hover:border-emerald-400"}">
-        <span class="text-lg leading-none">💤</span>
-        <span class="text-[10px] font-bold mt-0.5">Éco</span>
       </button>
     `);
   }

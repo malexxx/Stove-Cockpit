@@ -846,23 +846,6 @@ function renderTriArcBottomModes(T, zone = triArcZone) {
 
       <!-- 3. Boost -->
       ${boostButtonHtml}
-
-      <!-- 4. Eco / Stand-by -->
-      ${caps.has_eco !== false ? (() => {
-        const ecoBadge = T.st === 8
-          ? `<span class="text-[9.5px] font-black uppercase text-emerald-300 mt-0.5">Eco Stop</span>`
-          : (T.st === 9
-            ? `<span class="text-[9.5px] font-black uppercase text-emerald-300 mt-0.5">Stand-by</span>`
-            : (T.isEco ? `<span class="text-[9.5px] font-black uppercase text-emerald-300 mt-0.5">Confort</span>` : ""));
-        return `
-      <button type="button" onclick="toggleTriArcOptionBubble('eco')"
-        title="Mode Éco / Confort Mode (Stand-by)"
-        class="flex-1 h-14 sm:h-15 min-h-[54px] rounded-2xl border-2 flex flex-col items-center justify-center transition cursor-pointer ${T.isEco ? 'bg-emerald-950/75 border-emerald-400 text-emerald-200 shadow-[0_0_12px_rgba(16,185,129,0.35)]' : 'bg-slate-900/90 border-slate-700 text-slate-300 hover:border-emerald-400'}">
-        <span class="${T.isEco ? 'text-xl' : 'text-2xl'} leading-none">💤</span>
-        ${ecoBadge}
-      </button>
-      `;
-      })() : ""}
     </div>
   `;
 }
@@ -1059,6 +1042,11 @@ function renderTriArcFloatingOptionBubble(T) {
             <p class="font-semibold text-purple-300">Fonctionnement en mode Standalone</p>
             <p>Passe les consignes en <strong>hors gel (${tMin}°C)</strong>${T.st !== 0 ? " et règle le poêle en <strong>Auto</strong> (Boost et Chrono coupés) pour un ralenti silencieux immédiat" : ""}.</p>
           </div>
+          ${!T.canWriteEco ? `
+          <div class="text-[11px] leading-tight text-amber-200 bg-amber-950/40 border border-amber-500/40 rounded-xl p-2.5">
+            ℹ️ Si <strong>Comfort Clima</strong> est actif sur la télécommande physique, la consigne à ${tMin}°C mettra le poêle en veille <strong>ECO STOP</strong> au lieu du ralenti continu P0.
+          </div>
+          ` : ""}
           <div class="text-[11px] leading-tight text-indigo-200 bg-indigo-950/40 border border-indigo-500/40 rounded-xl p-2.5 flex items-start gap-2">
             <span class="text-sm leading-none shrink-0">⏱️</span>
             <p><strong>Temporisation &amp; retour automatique :</strong> la minuterie (1h à 4h) et la restauration automatique de l'état initial sont gérées uniquement lorsque vous êtes connecté au conteneur (<strong>Mode « + »</strong>).</p>
@@ -1090,7 +1078,8 @@ function renderTriArcFloatingOptionBubble(T) {
         <div class="space-y-1.5 text-[11px] leading-tight text-slate-300 bg-slate-950/70 border border-slate-800 rounded-xl p-2.5">
           <p class="font-semibold text-purple-300">Fonctionnement intelligent du mode Silence</p>
           <p>• <strong>Si poêle éteint :</strong> toutes les consignes passent immédiatement en <strong>hors gel (7°C)</strong>.</p>
-          <p>• <strong>Si poêle allumé :</strong> désactivation du <strong>Boost</strong>, du <strong>Mode Éco</strong> et de la <strong>programmation (Chrono)</strong>, activation du <strong>Mode Auto total</strong> et passage des consignes en <strong>hors gel (7°C)</strong>. Le poêle bascule ainsi automatiquement en puissance minimale <strong>P0</strong> et ventilation <strong>Ventil 0</strong> (convection 100% silencieuse) <strong>sans s'éteindre</strong>.</p>
+          <p>• <strong>Si poêle allumé :</strong> ${T.canWriteEco ? "désactivation du <strong>Boost</strong>, du <strong>Mode Éco</strong> et de la <strong>programmation (Chrono)</strong>" : "désactivation du <strong>Boost</strong> et de la <strong>programmation (Chrono)</strong>"}, activation du <strong>Mode Auto total</strong> et passage des consignes en <strong>hors gel (7°C)</strong>. Le poêle bascule ainsi automatiquement en puissance minimale <strong>P0</strong> et ventilation <strong>Ventil 0</strong> (convection 100% silencieuse) <strong>sans s'éteindre</strong>.</p>
+          ${!T.canWriteEco ? `<p class="text-amber-300/90">ℹ️ Si <strong>Comfort Clima</strong> est activé sur la télécommande physique, la consigne à 7°C déclenchera une veille thermique (<strong>ECO STOP</strong>) au lieu du ralenti continu P0, puis rallumera le poêle à la restauration.</p>` : ""}
           <p class="text-slate-400">À la fin du décompte programmé ou lors d'une modification manuelle, les consignes et réglages d'origine sont automatiquement restaurés.</p>
         </div>
       </div>

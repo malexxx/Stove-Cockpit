@@ -9,6 +9,7 @@ import logging
 import time
 from typing import Any
 
+from clients import agua_client
 from database import (
     db_log,
     get_active_mode,
@@ -90,6 +91,42 @@ def get_silence_status() -> dict[str, Any]:
     }
 
 
+def _build_silence_activation_plan(
+    regs: dict[str, Any],
+    is_stove_on: bool,
+    can_write_eco: bool,
+) -> tuple[list[dict[str, Any]], list[str], str]:
+    """Construit la liste des écritures d'activation Silence, les clés modifiées et le résumé de log."""
+    if not is_stove_on:
+        temp_keys = ("temp_amb_setpoint", "duct_left_setpoint", "duct_right_setpoint")
+        cmds = [
+            {"reg_key": rk, "value": 7.0, "offset": int(regs.get(rk, {}).get("offset", _DEFAULT_RESTORE_OFFSETS[rk][1]))}
+            for rk in temp_keys
+        ]
+        return cmds, list(temp_keys), "poêle éteint : toutes les consignes de température passées en hors-gel 7°C"
+
+    specs: list[tuple[str, float]] = [
+        ("fun_pwf_set", 0.0),
+        *( [("standby_set", 0.0)] if can_write_eco else [] ),
+        ("chrono_week_enable_set", 0.0),
+        ("fun_auto_set", 1.0),
+        ("fan_front_speed", 8.0),
+        ("duct_left_speed", 8.0),
+        ("duct_right_speed", 8.0),
+        ("temp_amb_setpoint", 7.0),
+        ("duct_left_setpoint", 7.0),
+        ("duct_right_setpoint", 7.0),
+    ]
+    cmds = [
+        {"reg_key": rk, "value": val, "offset": int(regs.get(rk, {}).get("offset", _DEFAULT_RESTORE_OFFSETS[rk][1]))}
+        for rk, val in specs
+    ]
+    modified_keys = [rk for rk, _ in specs]
+    eco_txt = "Boost/Éco/Chrono" if can_write_eco else "Boost/Chrono"
+    log_detail = f"poêle allumé : {eco_txt} désactivés, Auto total activé, consignes en hors-gel 7°C (régulation P0 & Ventil 0 sans extinction)"
+    return cmds, modified_keys, log_detail
+
+
 async def activate_silence_mode(duration_hours: float = 2.0) -> dict[str, Any]:
     """
     Active le mode Silence intelligent :
@@ -99,6 +136,8 @@ async def activate_silence_mode(duration_hours: float = 2.0) -> dict[str, Any]:
     - Programme le job d'extinction automatique à l'échéance.
     """
     active_mode = get_active_mode()
+    settings = get_settings_dict()
+    can_write_eco = active_mode != "agua_cloud" or bool(agua_client.get_capabilities(settings).get("can_write_eco"))
     regs = get_registers_dict(active_mode)
     latest_dict = get_latest_telemetry(active_mode)
 
@@ -123,6 +162,8 @@ async def activate_silence_mode(duration_hours: float = 2.0) -> dict[str, Any]:
     )
     initial_state = dict(existing_state["initial_state"]) if preserve_initial else {}
     for k in SILENCE_KEYS_TO_SAVE:
+        if k == "standby_set" and not can_write_eco:
+            continue
         if k not in initial_state:
             if k in regs:
                 initial_state[k] = float(regs[k].get("current_val", 0.0))
@@ -135,44 +176,7 @@ async def activate_silence_mode(duration_hours: float = 2.0) -> dict[str, Any]:
     # vérifié inactif sur Nobis A10 (carte T033.NBS.AIR.MB01 — bit 2048 set_silece_enable = 0 dans #107
     # en Manuel P3, Auto P7 et Boost P8, aucun effet sur le poêle ni la radiocommande).
     # L'état du mode Silence intelligent est suivi uniquement côté application (silence_timer_state).
-    if is_stove_on:
-        activation_cmds = [
-            {"reg_key": "fun_pwf_set", "value": 0.0, "offset": int(regs.get("fun_pwf_set", {}).get("offset", 33154))},
-            {"reg_key": "standby_set", "value": 0.0, "offset": int(regs.get("standby_set", {}).get("offset", 33130))},
-            {"reg_key": "chrono_week_enable_set", "value": 0.0, "offset": int(regs.get("chrono_week_enable_set", {}).get("offset", 33162))},
-            {"reg_key": "fun_auto_set", "value": 1.0, "offset": int(regs.get("fun_auto_set", {}).get("offset", 33128))},
-            {"reg_key": "fan_front_speed", "value": 8.0, "offset": int(regs.get("fan_front_speed", {}).get("offset", 33132))},
-            {"reg_key": "duct_left_speed", "value": 8.0, "offset": int(regs.get("duct_left_speed", {}).get("offset", 33136))},
-            {"reg_key": "duct_right_speed", "value": 8.0, "offset": int(regs.get("duct_right_speed", {}).get("offset", 33134))},
-            {"reg_key": "temp_amb_setpoint", "value": 7.0, "offset": int(regs.get("temp_amb_setpoint", {}).get("offset", 33122))},
-            {"reg_key": "duct_left_setpoint", "value": 7.0, "offset": int(regs.get("duct_left_setpoint", {}).get("offset", 33126))},
-            {"reg_key": "duct_right_setpoint", "value": 7.0, "offset": int(regs.get("duct_right_setpoint", {}).get("offset", 33124))},
-        ]
-        modified_keys = [
-            "fun_pwf_set",
-            "standby_set",
-            "chrono_week_enable_set",
-            "fun_auto_set",
-            "fan_front_speed",
-            "duct_left_speed",
-            "duct_right_speed",
-            "temp_amb_setpoint",
-            "duct_left_setpoint",
-            "duct_right_setpoint",
-        ]
-        log_detail = "poêle allumé : Boost/Éco/Chrono désactivés, Auto total activé, consignes en hors-gel 7°C (régulation P0 & Ventil 0 sans extinction)"
-    else:
-        activation_cmds = [
-            {"reg_key": "temp_amb_setpoint", "value": 7.0, "offset": int(regs.get("temp_amb_setpoint", {}).get("offset", 33122))},
-            {"reg_key": "duct_left_setpoint", "value": 7.0, "offset": int(regs.get("duct_left_setpoint", {}).get("offset", 33126))},
-            {"reg_key": "duct_right_setpoint", "value": 7.0, "offset": int(regs.get("duct_right_setpoint", {}).get("offset", 33124))},
-        ]
-        modified_keys = [
-            "temp_amb_setpoint",
-            "duct_left_setpoint",
-            "duct_right_setpoint",
-        ]
-        log_detail = "poêle éteint : toutes les consignes de température passées en hors-gel 7°C"
+    activation_cmds, modified_keys, log_detail = _build_silence_activation_plan(regs, is_stove_on, can_write_eco)
 
     write_res = await execute_registers_batch_write(activation_cmds, skip_poll=True)
 

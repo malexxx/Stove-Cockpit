@@ -101,7 +101,7 @@ class TestDynamicMicronovaEngine(unittest.TestCase):
         self.assertEqual(caps_hydro["temp_min"], 40.0)
         self.assertEqual(caps_hydro["temp_max"], 80.0)
 
-        # 3. Nobis A10 (2 canalisations SX/DX, P1..P7)
+        # 3. Nobis A10 (2 canalisations SX/DX, P1..P7, retours canalization_2sx_*/2dx_*)
         nobis = parse_registers_map({
             "registers_map": [
                 {"reg_key": "temp_air2_get", "offset": 103},
@@ -110,9 +110,18 @@ class TestDynamicMicronovaEngine(unittest.TestCase):
                 {"reg_key": "vent_front_set", "offset": 33132, "set_min": 0, "set_max": 8},
                 {"reg_key": "canalization_sx_set", "offset": 33136, "set_min": 0, "set_max": 8},
                 {"reg_key": "canalization_dx_set", "offset": 33134, "set_min": 0, "set_max": 8},
+                {"reg_key": "canalization_2sx_get", "offset": 32},
+                {"reg_key": "canalization_2sx_temp_air_get", "offset": 29},
+                {"reg_key": "canalization_2dx_get", "offset": 31},
+                {"reg_key": "canalization_2dx_temp_air_get", "offset": 28},
             ]
         })
         caps_nobis = detect_capabilities(nobis, settings={"agua_brand": "nobis"})
         self.assertEqual(caps_nobis["stove_type"], "air")
         self.assertEqual(len(caps_nobis["ducts"]), 2)
         self.assertTrue(caps_nobis["is_nobis_a10_profile"])
+        ducts_by_id = {d["id"]: d for d in caps_nobis["ducts"]}
+        self.assertEqual(ducts_by_id["SX"]["speed_get_key"], "canalization_2sx_get")
+        self.assertEqual(ducts_by_id["SX"]["temp_get_key"], "canalization_2sx_temp_air_get")
+        self.assertEqual(ducts_by_id["DX"]["speed_get_key"], "canalization_2dx_get")
+        self.assertEqual(ducts_by_id["DX"]["temp_get_key"], "canalization_2dx_temp_air_get")

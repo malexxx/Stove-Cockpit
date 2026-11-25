@@ -16,6 +16,52 @@ function renderCockpitView_intentions(T, caps) {
   const isAutoActive = T.autoIdx > 0;
   const isBoostActive = T.pwfVal > 0;
 
+  const intentCards = [];
+  if (caps.has_auto !== false) {
+    intentCards.push(`
+        <button type="button" onclick="setTriArcAutoOption(${T.autoIdx === 2 ? 0 : 2})"
+          class="rounded-3xl border-2 p-3.5 text-left transition cursor-pointer space-y-1 ${isAutoActive
+            ? "bg-orange-950/60 border-orange-400 text-white shadow-[0_0_15px_rgba(249,115,22,0.25)]"
+            : "bg-slate-900/90 border-slate-800 hover:border-cyan-500/60 text-slate-200"}">
+          <div class="flex items-center justify-between">
+            <span class="text-xl">✨</span>
+            <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${isAutoActive ? "bg-orange-600 text-white" : "bg-slate-800 text-slate-400"}">${T.autoIdx === 2 ? "Auto" : (T.autoIdx === 1 ? "Ventil" : "OFF")}</span>
+          </div>
+          <div class="text-xs font-extrabold">Confort Auto</div>
+          <div class="text-[11px] text-slate-400 leading-tight">Le poêle dose flamme et air tout seul.</div>
+        </button>
+    `);
+  }
+  if (caps.has_boost !== false) {
+    intentCards.push(`
+        <button type="button" onclick="toggleTriArcOptionBubble('boost')"
+          class="rounded-3xl border-2 p-3.5 text-left transition cursor-pointer space-y-1 ${isBoostActive
+            ? "bg-rose-950/60 border-rose-400 text-white shadow-[0_0_15px_rgba(244,63,94,0.25)]"
+            : "bg-slate-900/90 border-slate-800 hover:border-rose-500/60 text-slate-200"}">
+          <div class="flex items-center justify-between">
+            <span class="text-xl">🚀</span>
+            <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${isBoostActive ? "bg-rose-600 text-white" : "bg-slate-800 text-slate-400"}">${T.pwfVal === 1 ? "Actif" : (T.pwfVal === 2 ? "Prog" : "OFF")}</span>
+          </div>
+          <div class="text-xs font-extrabold">Coup de chaud</div>
+          <div class="text-[11px] text-slate-400 leading-tight">Chauffe maximale temporaire (Powerful).</div>
+        </button>
+    `);
+  }
+  const silenceSpanCls = intentCards.length === 2 ? "col-span-2 " : "";
+  intentCards.push(`
+        <button type="button" onclick="toggleTriArcOptionBubble('silence')"
+          class="${silenceSpanCls}rounded-3xl border-2 p-3.5 text-left transition cursor-pointer space-y-1 ${silBtnActive
+            ? "bg-purple-950/65 border-purple-400 text-white shadow-[0_0_15px_rgba(168,85,247,0.25)]"
+            : "bg-slate-900/90 border-slate-800 hover:border-purple-500/60 text-slate-200"}">
+          <div class="flex items-center justify-between">
+            <span class="text-xl">🤫</span>
+            <span ${silTimerActive ? 'id="triarc-silence-btn-timer"' : ""} class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full tabular-nums ${silBtnActive ? "bg-purple-600 text-white" : "bg-slate-800 text-slate-400"}">${silBadgeTxt}</span>
+          </div>
+          <div class="text-xs font-extrabold">Soirée calme</div>
+          <div class="text-[11px] text-slate-400 leading-tight">${isContainerSil ? "Convection douce minutée." : "Ralenti silencieux immédiat."}</div>
+        </button>
+  `);
+
   return `
     <div class="space-y-2.5">
       <div class="rounded-3xl bg-slate-900/90 border border-slate-800 p-4 space-y-3 shadow-lg">
@@ -41,61 +87,9 @@ function renderCockpitView_intentions(T, caps) {
         </div>
       </div>
 
-      <!-- Grille 2x2 d'intentions humaines -->
+      <!-- Grille d'intentions humaines -->
       <div class="grid grid-cols-2 gap-2.5">
-        ${caps.has_auto !== false ? `
-        <button type="button" onclick="setTriArcAutoOption(${T.autoIdx === 2 ? 0 : 2})"
-          class="rounded-3xl border-2 p-3.5 text-left transition cursor-pointer space-y-1 ${isAutoActive
-            ? "bg-orange-950/60 border-orange-400 text-white shadow-[0_0_15px_rgba(249,115,22,0.25)]"
-            : "bg-slate-900/90 border-slate-800 hover:border-cyan-500/60 text-slate-200"}">
-          <div class="flex items-center justify-between">
-            <span class="text-xl">✨</span>
-            <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${isAutoActive ? "bg-orange-600 text-white" : "bg-slate-800 text-slate-400"}">${T.autoIdx === 2 ? "Auto" : (T.autoIdx === 1 ? "Ventil" : "OFF")}</span>
-          </div>
-          <div class="text-xs font-extrabold">Confort Auto</div>
-          <div class="text-[11px] text-slate-400 leading-tight">Le poêle dose flamme et air tout seul.</div>
-        </button>
-        ` : ""}
-
-        ${caps.has_boost !== false ? `
-        <button type="button" onclick="toggleTriArcOptionBubble('boost')"
-          class="rounded-3xl border-2 p-3.5 text-left transition cursor-pointer space-y-1 ${isBoostActive
-            ? "bg-rose-950/60 border-rose-400 text-white shadow-[0_0_15px_rgba(244,63,94,0.25)]"
-            : "bg-slate-900/90 border-slate-800 hover:border-rose-500/60 text-slate-200"}">
-          <div class="flex items-center justify-between">
-            <span class="text-xl">🚀</span>
-            <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${isBoostActive ? "bg-rose-600 text-white" : "bg-slate-800 text-slate-400"}">${T.pwfVal === 1 ? "Actif" : (T.pwfVal === 2 ? "Prog" : "OFF")}</span>
-          </div>
-          <div class="text-xs font-extrabold">Coup de chaud</div>
-          <div class="text-[11px] text-slate-400 leading-tight">Chauffe maximale temporaire (Powerful).</div>
-        </button>
-        ` : ""}
-
-        <button type="button" onclick="toggleTriArcOptionBubble('silence')"
-          class="rounded-3xl border-2 p-3.5 text-left transition cursor-pointer space-y-1 ${silBtnActive
-            ? "bg-purple-950/65 border-purple-400 text-white shadow-[0_0_15px_rgba(168,85,247,0.25)]"
-            : "bg-slate-900/90 border-slate-800 hover:border-purple-500/60 text-slate-200"}">
-          <div class="flex items-center justify-between">
-            <span class="text-xl">🤫</span>
-            <span ${silTimerActive ? 'id="triarc-silence-btn-timer"' : ""} class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full tabular-nums ${silBtnActive ? "bg-purple-600 text-white" : "bg-slate-800 text-slate-400"}">${silBadgeTxt}</span>
-          </div>
-          <div class="text-xs font-extrabold">Soirée calme</div>
-          <div class="text-[11px] text-slate-400 leading-tight">${isContainerSil ? "Convection douce minutée." : "Ralenti silencieux immédiat."}</div>
-        </button>
-
-        ${caps.has_eco !== false ? `
-        <button type="button" onclick="toggleTriArcOptionBubble('eco')"
-          class="rounded-3xl border-2 p-3.5 text-left transition cursor-pointer space-y-1 ${T.isEco
-            ? "bg-emerald-950/60 border-emerald-400 text-white shadow-[0_0_15px_rgba(16,185,129,0.25)]"
-            : "bg-slate-900/90 border-slate-800 hover:border-emerald-500/60 text-slate-200"}">
-          <div class="flex items-center justify-between">
-            <span class="text-xl">💤</span>
-            <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${T.isEco ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-400"}">${T.isEco ? "Veille" : "Info"}</span>
-          </div>
-          <div class="text-xs font-extrabold">Éco / Veille</div>
-          <div class="text-[11px] text-slate-400 leading-tight">Confort Clima : coupure dès cible atteinte.</div>
-        </button>
-        ` : ""}
+        ${intentCards.join("")}
       </div>
 
       <button type="button" onclick="cockpitOpenSheet('manual')"

@@ -145,11 +145,12 @@ def test_ui_tab_navigation(page: Page):
 
 
 def test_ui_modals_presence(page: Page):
-    """Vérifie la présence des fenêtres modales (Silence, Matter, Actions)."""
+    """Vérifie la présence des fenêtres modales (Silence, Matter, Actions, Cartographie Cloud)."""
     page.goto(f"{APP_ORIGIN}/", wait_until="domcontentloaded")
     assert page.locator("#silence-modal").count() > 0
     assert page.locator("#matter-modal").count() > 0
     assert page.locator("#action-modal").count() > 0
+    assert page.locator("#agua-regmap-modal").count() > 0
 
 
 def test_ui_mobile_viewport_and_bottom_nav(browser_instance):
@@ -489,6 +490,7 @@ def test_ui_cockpit_11_modes_settings_and_hydro_safety(browser_instance):
             const cardCount = document.querySelectorAll("#cockpit-ui-picker-grid [data-ui-mode-card]").length;
 
             const rendered = {};
+            const noEcoBtn = {};
             for (const m of modesList) {
                 await setActiveCockpitUiMode(m, { persist: false, silent: true });
                 switchTab("tab-control");
@@ -514,6 +516,7 @@ def test_ui_cockpit_11_modes_settings_and_hydro_safety(browser_instance):
                 rendered[m] = m === "triarc"
                     ? (!triCard.classList.contains("hidden") && altRoot.classList.contains("hidden"))
                     : (triCard.classList.contains("hidden") && !altRoot.classList.contains("hidden") && altRoot.textContent.trim().length > 0);
+                noEcoBtn[m] = !document.getElementById("tab-control").innerHTML.includes("toggleTriArcOptionBubble('eco')");
             }
 
             // Test barre de validation non-bloquante sur une nouvelle vue
@@ -547,11 +550,12 @@ def test_ui_cockpit_11_modes_settings_and_hydro_safety(browser_instance):
                     ? document.getElementById("triarc-slide-AMB").textContent.trim().length > 0
                     : document.getElementById("cockpit-alt-root").textContent.trim().length > 0;
             }
-            return { cardCount, rendered, pendingVisible, pendingCleared, hydroOk };
+            return { cardCount, rendered, noEcoBtn, pendingVisible, pendingCleared, hydroOk };
         }""", modes)
 
         assert res["cardCount"] == 11
         assert all(res["rendered"].values()), f"Rendu incomplet sur {viewport}: {res['rendered']}"
+        assert all(res["noEcoBtn"].values()), f"Bouton Eco encore présent sur {viewport}: {res['noEcoBtn']}"
         assert res["pendingVisible"] is True
         assert res["pendingCleared"] is True
         assert all(res["hydroOk"].values()), f"Erreur profil Hydro sur {viewport}: {res['hydroOk']}"

@@ -170,4 +170,27 @@ describe("Micronova register engine (parité backend)", () => {
     expect(resRegOn.capabilities.can_write_eco).toBe(true);
     expect(resRegOn.latest.standby_enabled).toBe(1);
   });
+
+  it("detectCapabilities résout les clés retour canalization_2sx_* et canalization_2dx_* sur Nobis A10", () => {
+    const nobisMap = parseRegistersMap({
+      registers_map: [
+        { reg_key: "temp_air2_get", offset: 103, formula: "#", reg_type: "GET" },
+        { reg_key: "temp_air_set", offset: 33122, formula: "#", set_min: 7, set_max: 41, reg_type: "SET" },
+        { reg_key: "power_set", offset: 33120, formula: "#", set_min: 1, set_max: 7, reg_type: "SET" },
+        { reg_key: "canalization_sx_set", offset: 33136, formula: "#", set_min: 0, set_max: 8, reg_type: "SET" },
+        { reg_key: "canalization_dx_set", offset: 33134, formula: "#", set_min: 0, set_max: 8, reg_type: "SET" },
+        { reg_key: "canalization_2sx_get", offset: 32, formula: "#", reg_type: "GET" },
+        { reg_key: "canalization_2sx_temp_air_get", offset: 29, formula: "#/2", reg_type: "GET" },
+        { reg_key: "canalization_2dx_get", offset: 31, formula: "#", reg_type: "GET" },
+        { reg_key: "canalization_2dx_temp_air_get", offset: 28, formula: "#/2", reg_type: "GET" },
+      ],
+    });
+    const caps = detectCapabilities(nobisMap, {}, { agua_brand: "nobis" });
+    const sx = caps.ducts.find((d) => d.id === "SX");
+    const dx = caps.ducts.find((d) => d.id === "DX");
+    expect(sx?.speed_get_key).toBe("canalization_2sx_get");
+    expect(sx?.temp_get_key).toBe("canalization_2sx_temp_air_get");
+    expect(dx?.speed_get_key).toBe("canalization_2dx_get");
+    expect(dx?.temp_get_key).toBe("canalization_2dx_temp_air_get");
+  });
 });

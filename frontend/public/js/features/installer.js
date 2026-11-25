@@ -188,11 +188,20 @@ function renderEepromTable() {
 
   const combinedMap = new Map();
 
+  const commMode = typeof getActiveCommMode === "function" ? getActiveCommMode() : "agua_cloud";
+  const caps = typeof getActiveCapabilities === "function" ? getActiveCapabilities() : {};
+
   // 1. Registres du catalogue officiel (EEPROM et commandes RAM)
   Object.values(registersCatalog).forEach(r => {
     const offNum = Number(r.offset);
     const memType = r.mem_type || (offNum >= 32768 ? "EEPROM" : "RAM");
-    const liveVal = (rawObj[offNum] !== undefined) ? rawObj[offNum] : (r.current_val ?? "--");
+    const isTrim = offNum === 70 || offNum === 71 || r.reg_key === "trim_pellet_pct" || r.reg_key === "trim_exhaust_pct";
+    const isUnwritableStandby = (offNum === 33130 || r.reg_key === "standby_set") && commMode === "agua_cloud" && !caps.can_write_eco;
+    const isRemoteOnly = (commMode === "agua_cloud" && isTrim) || isUnwritableStandby;
+    let liveVal = (rawObj[offNum] !== undefined) ? rawObj[offNum] : (r.current_val ?? "--");
+    if (isUnwritableStandby && rawObj[offNum] === undefined && ![8, 9].includes(Number(latestData.status_code ?? 0))) {
+      liveVal = "--";
+    }
     combinedMap.set(offNum, {
       offset: offNum,
       mem_type: memType,
@@ -204,7 +213,8 @@ function renderEepromTable() {
       max_val: r.max_val,
       step: r.step || 1,
       current_val: liveVal,
-      is_writable: true
+      is_writable: !isRemoteOnly,
+      remote_only: isRemoteOnly
     });
   });
 
@@ -309,14 +319,16 @@ function renderEepromTable() {
 
     const editVal = (typeof item.current_val === "number") ? item.current_val : (Number(item.default_val) || 0);
 
-    const actionHtml = item.is_writable
-      ? `<div class="flex items-center justify-end gap-1.5">
-          <input id="inp-${escapeHtml(item.reg_key)}" type="number" step="${Number(item.step || 1)}" min="${Number(item.min_val ?? 0)}" max="${Number(item.max_val ?? 65535)}" value="${Number(editVal)}"
-            class="inst-input bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 w-16 sm:w-20 text-white tabular-nums text-xs focus:border-orange-500 focus:outline-none" />
-          <button data-reg="${escapeHtml(item.reg_key)}" onclick="sendCommand(this.dataset.reg, document.getElementById('inp-' + this.dataset.reg).value)"
-            class="inst-input px-2.5 py-0.5 rounded bg-orange-600 hover:bg-orange-500 text-white text-[11px] font-semibold cursor-pointer transition shadow">Écrire</button>
-        </div>`
-      : `<div class="text-right"><span class="text-[10px] text-gray-500 font-mono italic">👁️ Direct (RO)</span></div>`;
+    const actionHtml = item.remote_only
+      ? `<div class="text-right"><span class="px-2 py-0.5 rounded bg-amber-950/60 border border-amber-700/60 text-[10px] text-amber-300 font-semibold" title="Non exposé en écriture par le Cloud Agua IOT : réglage sur la radiocommande physique uniquement">📟 Télécommande uniquement</span></div>`
+      : (item.is_writable
+        ? `<div class="flex items-center justify-end gap-1.5">
+            <input id="inp-${escapeHtml(item.reg_key)}" type="number" step="${Number(item.step || 1)}" min="${Number(item.min_val ?? 0)}" max="${Number(item.max_val ?? 65535)}" value="${Number(editVal)}"
+              class="inst-input bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 w-16 sm:w-20 text-white tabular-nums text-xs focus:border-orange-500 focus:outline-none" />
+            <button data-reg="${escapeHtml(item.reg_key)}" onclick="sendCommand(this.dataset.reg, document.getElementById('inp-' + this.dataset.reg).value)"
+              class="inst-input px-2.5 py-0.5 rounded bg-orange-600 hover:bg-orange-500 text-white text-[11px] font-semibold cursor-pointer transition shadow">Écrire</button>
+          </div>`
+        : `<div class="text-right"><span class="text-[10px] text-gray-500 font-mono italic">👁️ Direct (RO)</span></div>`);
 
     tr.innerHTML = `
       <td class="py-1.5 px-2.5 font-mono text-cyan-300 font-bold whitespace-nowrap">
@@ -614,4 +626,164 @@ function rollbackAudit(id, oldVal) {
       }
     }
   });
+}
+
+// =============================================================================
+// CARTOGRAPHIE OFFICIELLE AGUA CLOUD (/deviceGetRegistersMap)
+// =============================================================================
+
+let aguaRegMapEntries = [];
+let aguaRegMapBuffer = {};
+let aguaRegMapTypeFilter = "ALL";
+let aguaRegMapQuery = "";
+
+function _extractAguaRegMapItems(payload) {
+  const raw = payload?.registers_map;
+  const list = raw?.device_registers_map?.registers_map || raw?.registers_map || raw?.registersMap || (Array.isArray(raw) ? raw : []);
+  if (!Array.isArray(list)) return [];
+  const flat = [];
+  list.forEach(entry => {
+    if (!entry || typeof entry !== "object") return;
+    const items = Array.isArray(entry.registers) ? entry.registers : [entry];
+    items.forEach(reg => {
+      if (!reg || typeof reg !== "object") return;
+      const rk = String(reg.reg_key || reg.key || "").trim();
+      if (rk && reg.offset !== undefined && reg.offset !== null) {
+        flat.push(reg);
+      }
+    });
+  });
+  return flat.sort((a, b) => Number(a.offset) - Number(b.offset) || String(a.reg_key || a.key).localeCompare(String(b.reg_key || b.key)));
+}
+
+function _formatAguaEncValSummary(reg) {
+  const list = Array.isArray(reg?.enc_val) ? reg.enc_val : [];
+  if (list.length === 0) return "";
+  const langs = new Set(list.map(x => String(x?.lang || "").toUpperCase()).filter(Boolean));
+  const targetLang = langs.has("FRA") ? "FRA" : (langs.has("ENG") ? "ENG" : (langs.values().next().value || ""));
+  const filtered = list.filter(x => !targetLang || String(x?.lang || "").toUpperCase() === targetLang);
+  const parts = filtered.slice(0, 4).map(x => `${x.value}:${String(x.description || "").trim()}`);
+  return filtered.length > 4 ? `${parts.join(", ")} (+${filtered.length - 4})` : parts.join(", ");
+}
+
+function openAguaRegistersMapModal() {
+  const modal = document.getElementById("agua-regmap-modal");
+  if (!modal) return;
+  modal.classList.remove("hidden");
+  const searchInp = document.getElementById("agua-regmap-search");
+  if (searchInp) searchInp.value = "";
+  aguaRegMapQuery = "";
+  setAguaRegMapTypeFilter("ALL", false);
+  refreshAguaRegistersMap();
+}
+
+function closeAguaRegistersMapModal() {
+  const modal = document.getElementById("agua-regmap-modal");
+  if (modal) modal.classList.add("hidden");
+}
+
+function setAguaRegMapTypeFilter(type, shouldRender = true) {
+  aguaRegMapTypeFilter = String(type || "ALL").toUpperCase();
+  document.querySelectorAll(".agua-regmap-type-btn").forEach(btn => {
+    btn.classList.remove("bg-indigo-700", "text-white");
+  });
+  const activeBtn = document.getElementById(`agua-regmap-type-${aguaRegMapTypeFilter.toLowerCase()}`);
+  if (activeBtn) activeBtn.classList.add("bg-indigo-700", "text-white");
+  if (shouldRender) renderAguaRegistersMapTable();
+}
+
+function filterAguaRegistersMap(query) {
+  aguaRegMapQuery = String(query || "").toLowerCase().trim();
+  renderAguaRegistersMapTable();
+}
+
+async function refreshAguaRegistersMap() {
+  const tbody = document.getElementById("agua-regmap-tbody");
+  const countLabel = document.getElementById("agua-regmap-count-label");
+  if (tbody) {
+    tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-indigo-300 text-xs">⏳ Interrogation de /deviceGetRegistersMap en cours...</td></tr>`;
+  }
+  if (countLabel) countLabel.textContent = "Scan Agua Cloud en cours...";
+  try {
+    const data = await window.stoveProvider.getAguaRegistersMap(getInstallerHeaders());
+    if (data?.status === "offline") {
+      aguaRegMapEntries = [];
+      aguaRegMapBuffer = {};
+      if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-amber-300 text-xs">⚠️ ${escapeHtml(data.details || "Agua IOT non accessible.")}</td></tr>`;
+      }
+      if (countLabel) countLabel.textContent = "Poêle hors ligne";
+      return;
+    }
+    aguaRegMapEntries = _extractAguaRegMapItems(data);
+    aguaRegMapBuffer = (data && typeof data.raw_buffer === "object" && data.raw_buffer) ? data.raw_buffer : {};
+    renderAguaRegistersMapTable();
+  } catch (e) {
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-rose-300 text-xs">❌ ${escapeHtml(e?.message || "Erreur lors du scan Agua IOT.")}</td></tr>`;
+    }
+    if (countLabel) countLabel.textContent = "Erreur de scan";
+  }
+}
+
+function renderAguaRegistersMapTable() {
+  const tbody = document.getElementById("agua-regmap-tbody");
+  const badge = document.getElementById("agua-regmap-badge");
+  const countLabel = document.getElementById("agua-regmap-count-label");
+  if (!tbody) return;
+
+  if (badge) badge.textContent = `${aguaRegMapEntries.length} entrées`;
+
+  const q = aguaRegMapQuery;
+  const rows = aguaRegMapEntries.filter(reg => {
+    const rtype = String(reg.reg_type || "").toUpperCase();
+    if (aguaRegMapTypeFilter !== "ALL" && rtype !== aguaRegMapTypeFilter) return false;
+    if (!q) return true;
+    const rk = String(reg.reg_key || reg.key || "").toLowerCase();
+    const off = String(reg.offset ?? "").toLowerCase();
+    const label = String(reg.reg_name_app || reg.reg_name || "").toLowerCase();
+    return rk.includes(q) || off.includes(q) || label.includes(q);
+  });
+
+  if (countLabel) {
+    countLabel.textContent = (q || aguaRegMapTypeFilter !== "ALL")
+      ? `${rows.length} / ${aguaRegMapEntries.length} entrées affichées`
+      : `${aguaRegMapEntries.length} entrées au total`;
+  }
+
+  if (rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-gray-500 text-xs">Aucun registre ne correspond aux filtres sélectionnés.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(reg => {
+    const off = Number(reg.offset);
+    const rk = String(reg.reg_key || reg.key || "");
+    const rtype = String(reg.reg_type || "?").toUpperCase();
+    const typeCls = rtype === "SET"
+      ? "bg-purple-950 text-purple-300 border-purple-800/80"
+      : (rtype === "GET" ? "bg-emerald-950 text-emerald-300 border-emerald-800/80" : "bg-amber-950 text-amber-300 border-amber-800/80");
+    const label = String(reg.reg_name_app || reg.reg_name || "-");
+    const maskVal = reg.mask ?? reg.Mask ?? 65535;
+    const formula = String(reg.formula || "#");
+    const bounds = (reg.set_min !== undefined && reg.set_min !== null && reg.set_max !== undefined && reg.set_max !== null)
+      ? `[${reg.set_min}..${reg.set_max}]`
+      : "";
+    const encSummary = _formatAguaEncValSummary(reg);
+    const boundsCell = [bounds, encSummary].filter(Boolean).join(" • ") || "-";
+    const rawBufVal = aguaRegMapBuffer[String(off)] ?? aguaRegMapBuffer[off];
+    const bufDisplay = (rawBufVal !== undefined && rawBufVal !== null) ? rawBufVal : "--";
+
+    return `
+      <tr class="hover:bg-gray-800/40 transition">
+        <td class="py-1.5 px-2.5 font-mono text-cyan-300 font-bold whitespace-nowrap">#${off}</td>
+        <td class="py-1.5 px-2 whitespace-nowrap"><span class="px-1.5 py-0.5 rounded border font-mono text-[10px] font-bold ${typeCls}">${escapeHtml(rtype)}</span></td>
+        <td class="py-1.5 px-2 font-mono text-orange-300 font-semibold whitespace-nowrap">${escapeHtml(rk)}</td>
+        <td class="py-1.5 px-2 text-gray-200 max-w-[220px] truncate" title="${escapeHtml(label)}">${escapeHtml(label)}</td>
+        <td class="py-1.5 px-2 font-mono text-gray-400 whitespace-nowrap">m=${escapeHtml(maskVal)} · ${escapeHtml(formula)}</td>
+        <td class="py-1.5 px-2 text-gray-300 max-w-[220px] truncate" title="${escapeHtml(boundsCell)}">${escapeHtml(boundsCell)}</td>
+        <td class="py-1.5 px-2.5 text-right font-mono font-bold text-white whitespace-nowrap">${escapeHtml(bufDisplay)}</td>
+      </tr>
+    `;
+  }).join("");
 }

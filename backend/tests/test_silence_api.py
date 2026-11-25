@@ -159,3 +159,56 @@ class TestSilenceAPI(SimulationApiTestCase):
                 conn.commit()
             finally:
                 conn.close()
+
+    def test_silence_agua_cloud_skips_unwritable_standby(self):
+        """En mode agua_cloud avec can_write_eco=False, Silence n'écrit pas standby_set dans modified_keys ni command_audit."""
+        import asyncio
+        import time
+        from unittest.mock import AsyncMock, patch
+
+        from database import get_db
+        from services.silence_service import activate_silence_mode, deactivate_silence_mode
+        from tests.helpers import temporary_settings
+
+        conn = get_db("agua_cloud")
+        test_epoch = 0
+        try:
+            max_ep = conn.execute("SELECT MAX(epoch) FROM telemetry").fetchone()[0] or int(time.time())
+            test_epoch = max_ep + 100
+            conn.execute(
+                "INSERT INTO telemetry (timestamp, epoch, comm_mode, status_code, status_label) VALUES ('2026-11-11 12:10:00', ?, 'agua_cloud', 5, 'TRAVAIL (Normal)')",
+                (test_epoch,),
+            )
+            conn.execute("DELETE FROM command_audit")
+            conn.commit()
+        finally:
+            conn.close()
+
+        fake_caps = {"can_write_eco": False}
+        fake_latest = {"status_code": 5, "set_silece_set": 1}
+        try:
+            with (
+                temporary_settings({"comm_mode": "agua_cloud", "agua_email": "", "agua_password": ""}),
+                patch("services.silence_service.agua_client.get_capabilities", return_value=fake_caps),
+                patch("services.silence_service.collect_telemetry_cycle", new=AsyncMock(return_value=fake_latest)),
+            ):
+                res_act = asyncio.run(activate_silence_mode(1.0))
+                self.assertNotIn("standby_set", res_act["silence_mode"]["modified_keys"])
+                self.assertNotIn("standby_set", res_act["silence_mode"]["initial_state"])
+
+                conn = get_db("agua_cloud")
+                try:
+                    aud_keys = [r["reg_key"] for r in conn.execute("SELECT reg_key FROM command_audit").fetchall()]
+                finally:
+                    conn.close()
+                self.assertNotIn("standby_set", aud_keys)
+
+                asyncio.run(deactivate_silence_mode())
+        finally:
+            conn = get_db("agua_cloud")
+            try:
+                conn.execute("DELETE FROM telemetry WHERE epoch = ?", (test_epoch,))
+                conn.execute("DELETE FROM command_audit")
+                conn.commit()
+            finally:
+                conn.close()

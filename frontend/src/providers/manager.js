@@ -562,6 +562,11 @@ export class ProviderManager {
     return this._containerJson("/api/snapshots", { headers: extraHeaders });
   }
 
+  async getAguaRegistersMap(extraHeaders = {}) {
+    this._requireContainer("La cartographie Cloud Agua");
+    return this._containerJson("/api/agua-registers-map", { headers: extraHeaders });
+  }
+
   async createSnapshot(name, refreshLive = false, extraHeaders = {}) {
     this._requireContainer("La création de snapshot");
     return this._containerJson("/api/snapshots", { method: "POST", headers: extraHeaders, body: { name, refresh_live: Boolean(refreshLive) } });
