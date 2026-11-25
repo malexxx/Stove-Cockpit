@@ -478,7 +478,7 @@ def test_ui_cockpit_11_modes_settings_and_hydro_safety(browser_instance):
         context = browser_instance.new_context(viewport=viewport)
         page = context.new_page()
         page_errors = []
-        page.on("pageerror", lambda err: page_errors.append(str(err)))
+        page.on("pageerror", lambda err, errors=page_errors: errors.append(str(err)))
         _attach_app_routes(page)
         page.goto(f"{APP_ORIGIN}/", wait_until="load")
         page.wait_for_function("() => window.stoveProvider && window.stoveProvider.servedByContainer === true")
