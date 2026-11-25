@@ -606,23 +606,6 @@ export class ProviderManager {
     return this._containerJson(`/api/rollback/${encodeURIComponent(id)}`, { method: "POST", headers: extraHeaders });
   }
 
-  async verifyInstaller(password) {
-    this._requireContainer("Le mode installateur serveur");
-    return this._containerJson("/api/installer/verify", { method: "POST", body: { password } });
-  }
-
-  async getInstallerStatus(extraHeaders = {}) {
-    if (this.mode !== "container") {
-      return { unlocked: false, remaining_seconds: 0 };
-    }
-    return this._containerJson("/api/installer/status", { headers: extraHeaders });
-  }
-
-  async lockInstaller(extraHeaders = {}) {
-    if (this.mode !== "container") return { unlocked: false };
-    return this._containerJson("/api/installer/lock", { method: "POST", headers: extraHeaders });
-  }
-
   async getStorageStatus() {
     this._requireContainer("Le diagnostic stockage");
     return this._containerJson("/api/system/storage");
@@ -705,7 +688,7 @@ export class ProviderManager {
     }
   }
 
-  async pushCloudCredentialsToContainer({ url, token, syncTicket = "", installerToken = "", activateCloudMode = true, credentials = null } = {}) {
+  async pushCloudCredentialsToContainer({ url, token, syncTicket = "", activateCloudMode = true, credentials = null } = {}) {
     const targetUrl = String(url !== undefined ? url : (this.prefs.container_url || "")).trim().replace(/\/+$/, "");
     const targetTok = String(token || this.prefs.container_api_token || "").trim();
     if (!targetTok) {
@@ -726,16 +709,13 @@ export class ProviderManager {
     }
 
     const cleanTicket = String(syncTicket || "").trim();
-    const cleanInst = String(installerToken || "").trim();
-    const authProof = cleanTicket || cleanInst;
+    const authProof = cleanTicket;
     const envelope = await encryptCredEnvelope(creds, targetTok, authProof);
 
     const client = new ContainerApiClient();
     client.configure(targetUrl, targetTok);
-    const headers = cleanInst ? { "X-Installer-Token": cleanInst } : {};
     const r = await client.request("/api/system/cloud-credentials/import", {
       method: "POST",
-      headers,
       body: {
         envelope,
         ...(cleanTicket ? { sync_ticket: cleanTicket } : {}),
@@ -751,22 +731,19 @@ export class ProviderManager {
     return await r.json();
   }
 
-  async pullCloudCredentialsFromContainer({ url, token, syncTicket = "", installerToken = "" } = {}) {
+  async pullCloudCredentialsFromContainer({ url, token, syncTicket = "" } = {}) {
     const targetUrl = String(url !== undefined ? url : (this.prefs.container_url || "")).trim().replace(/\/+$/, "");
     const targetTok = String(token || this.prefs.container_api_token || "").trim();
     if (!targetTok) {
       throw new Error("Token API du conteneur requis pour déchiffrer les identifiants.");
     }
     const cleanTicket = String(syncTicket || "").trim();
-    const cleanInst = String(installerToken || "").trim();
-    const authProof = cleanTicket || cleanInst;
+    const authProof = cleanTicket;
 
     const client = new ContainerApiClient();
     client.configure(targetUrl, targetTok);
-    const headers = cleanInst ? { "X-Installer-Token": cleanInst } : {};
     const r = await client.request("/api/system/cloud-credentials/export", {
       method: "POST",
-      headers,
       body: cleanTicket ? { sync_ticket: cleanTicket } : {},
     });
     if (!r.ok) {

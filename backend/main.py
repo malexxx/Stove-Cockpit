@@ -36,17 +36,11 @@ from routers.dashboard import (
     router as dashboard_router,
     set_shutting_down,
 )
-from routers.installer import router as installer_router
 from routers.matter import router as matter_router
 from routers.silence import router as silence_router
 from routers.stove import router as stove_router
 from routers.system import router as system_router
 from services.api_token_service import get_or_create_api_token
-from services.installer_auth import (
-    _failed_auth_attempts,
-    _installer_sessions,
-    is_installer_authenticated,
-)
 from services.lifecycle import (
     install_windows_proactor_guard,
     prepare_scheduler_for_running_loop,
@@ -75,9 +69,6 @@ __all__ = [
     "get_silence_status",
     "get_silence_state",
     "save_silence_state",
-    "is_installer_authenticated",
-    "_installer_sessions",
-    "_failed_auth_attempts",
 ]
 
 install_windows_proactor_guard()
@@ -211,7 +202,6 @@ register_security_and_error_handlers(app)
 app.include_router(silence_router)
 app.include_router(matter_router)
 app.include_router(calibration_router)
-app.include_router(installer_router)
 app.include_router(stove_router)
 app.include_router(system_router)
 app.include_router(dashboard_router)

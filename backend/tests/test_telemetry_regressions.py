@@ -48,9 +48,6 @@ class TestTelemetryRegressions(BugBountyTestCase):
                 return {"token_ok": True}
 
             try:
-                from tests.helpers import get_installer_auth_headers
-
-                headers = get_installer_auth_headers(self.client)
                 with patch.object(clients.AguaCloudClient, "login_and_discover", autospec=True, side_effect=fake_login):
                     resp = self.client.post(
                         "/api/test-connection",
@@ -60,7 +57,6 @@ class TestTelemetryRegressions(BugBountyTestCase):
                             "agua_password": "secret",
                             "agua_uuid": "uuid-test",
                         },
-                        headers=headers,
                     )
                 self.assertEqual(resp.status_code, 200)
                 self.assertFalse(seen_kwargs.get("persist_discovery", True))

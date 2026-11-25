@@ -24,7 +24,7 @@ from database import (
     query_dashboard_series_range,
     read_registers_from_conn,
 )
-from services.installer_auth import _get_client_ip
+from services.client_ip import _get_client_ip
 from services.silence_service import get_silence_status
 from services.storage_service import inspect_storage_persistence
 from telemetry import collect_telemetry_cycle, get_comm_status, sse_subscribers

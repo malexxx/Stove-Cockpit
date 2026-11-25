@@ -4,13 +4,12 @@ from datetime import datetime
 import json
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Body, HTTPException, Path, Request
+from fastapi import APIRouter, Body, HTTPException, Path
 from fastapi.responses import StreamingResponse
 
 from database import db_log, get_active_mode, get_db, get_registers_dict
 from routers.observability import sanitize_csv_cell
 from schemas import SnapshotCreatePayload
-from services.installer_auth import require_installer_auth_if_configured
 from telemetry import collect_telemetry_cycle, execute_registers_batch_write
 
 router = APIRouter(prefix="/api", tags=["Snapshots"])
@@ -51,9 +50,8 @@ async def api_list_snapshots():
 
 
 @router.post("/snapshots")
-async def api_create_snapshot(request: Request, payload: Annotated[SnapshotCreatePayload, Body()] = _SNAPSHOT_DEFAULT):
+async def api_create_snapshot(payload: Annotated[SnapshotCreatePayload, Body()] = _SNAPSHOT_DEFAULT):
     """Crée un snapshot instantané de tous les registres et du buffer brut."""
-    require_installer_auth_if_configured(request)
     active_mode = get_active_mode()
     if payload.refresh_live:
         await collect_telemetry_cycle(active_mode)
@@ -83,9 +81,8 @@ async def api_create_snapshot(request: Request, payload: Annotated[SnapshotCreat
 
 
 @router.post("/snapshots/{snap_id}/restore", responses={404: {"description": "Snapshot introuvable"}})
-async def api_restore_snapshot(request: Request, snap_id: _SnapIdPath):
+async def api_restore_snapshot(snap_id: _SnapIdPath):
     """Restaure les valeurs de registres depuis un snapshot sauvegardé."""
-    require_installer_auth_if_configured(request)
     active_mode = get_active_mode()
     conn = get_db(active_mode)
     try:
@@ -111,9 +108,8 @@ async def api_restore_snapshot(request: Request, snap_id: _SnapIdPath):
 
 
 @router.delete("/snapshots/{snap_id}", responses={404: {"description": "Snapshot introuvable"}})
-async def api_delete_snapshot(request: Request, snap_id: _SnapIdPath):
+async def api_delete_snapshot(snap_id: _SnapIdPath):
     """Supprime un snapshot."""
-    require_installer_auth_if_configured(request)
     active_mode = get_active_mode()
     conn = get_db(active_mode)
     try:

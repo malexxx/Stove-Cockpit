@@ -22,7 +22,7 @@ from matter_service import (
 )
 from routers.observability import sanitize_csv_cell
 from server import parse_args as server_parse_args
-from services.installer_auth import _get_client_ip, clear_installer_sessions
+from services.client_ip import _get_client_ip
 from services.lifecycle import _background_tasks, spawn_background_task
 from src.calibration.calibration_service import build_sample_from_record
 from src.calibration.models import StoveOperationalPhase
@@ -169,37 +169,21 @@ class TestAuditRemediations(BugBountyTestCase):
         self.assertTrue(sent_headers["Title"].startswith("=?utf-8?"))
 
     # ------------------------------------------------------------------
-    # H-01 : Auth installateur et validation Pydantic sur endpoints privilégiés
+    # H-01 : Validation Pydantic sur endpoints calibration
     # ------------------------------------------------------------------
-    def test_h01_privileged_endpoints_protected_and_validated(self):
-        clear_installer_sessions()
+    def test_h01_privileged_endpoints_validated(self):
         with temporary_settings({"comm_mode": "simulation", "agua_password": "audit-h01-secret"}):
-            # Tous les endpoints privilégiés nouvellement durcis doivent renvoyer 403 sans jeton
-            self.assertEqual(self.client.post("/api/calibration/step1-start", json={"mode": "COMBINED_BOTH"}).status_code, 403)
-            self.assertEqual(self.client.post("/api/calibration/step2-confirm-al03").status_code, 403)
-            self.assertEqual(self.client.post("/api/calibration/step3-load-charge", json={"weighed_bag_kg": 15.0}).status_code, 403)
-            self.assertEqual(self.client.post("/api/calibration/step5-apply").status_code, 403)
-            self.assertEqual(self.client.post("/api/calibration/reset").status_code, 403)
-            self.assertEqual(self.client.post("/api/pellet-batch/raz", json={"pellet_brand": "Test"}).status_code, 403)
-            self.assertEqual(self.client.post("/api/rollback/1").status_code, 403)
-            self.assertEqual(self.client.post("/api/matter/restart").status_code, 403)
-            self.assertEqual(self.client.post("/api/test-webhook", json={"webhook_url": "https://example.com/h"}).status_code, 403)
-            self.assertEqual(self.client.post("/api/test-connection", json={"comm_mode": "simulation"}).status_code, 403)
-            self.assertEqual(self.client.get("/api/agua-registers-map").status_code, 403)
-
-            # Avec jeton valide, les payloads calibration invalides sont rejetés en 422 (plus de 500)
-            tok = self.client.post("/api/installer/verify", json={"password": "audit-h01-secret"}).json()["token"]
-            headers = {"X-Installer-Token": tok}
+            # Les payloads calibration invalides sont rejetés en 422 (plus de 500)
             self.assertEqual(
-                self.client.post("/api/calibration/step3-load-charge", json={"weighed_bag_kg": "not-a-float"}, headers=headers).status_code,
+                self.client.post("/api/calibration/step3-load-charge", json={"weighed_bag_kg": "not-a-float"}).status_code,
                 422,
             )
             self.assertEqual(
-                self.client.post("/api/calibration/step3-load-charge", json={"weighed_bag_kg": -5.0}, headers=headers).status_code,
+                self.client.post("/api/calibration/step3-load-charge", json={"weighed_bag_kg": -5.0}).status_code,
                 422,
             )
             self.assertEqual(
-                self.client.post("/api/calibration/step1-start", json={"mode": "INVALID_MODE"}, headers=headers).status_code,
+                self.client.post("/api/calibration/step1-start", json={"mode": "INVALID_MODE"}).status_code,
                 422,
             )
 
@@ -268,9 +252,7 @@ class TestAuditRemediations(BugBountyTestCase):
         self.assertEqual(sanitize_csv_cell("=CMD()"), "'=CMD()")
 
         with temporary_settings({"comm_mode": "simulation", "agua_password": "m04-pass"}):
-            clear_installer_sessions()
-            tok = self.client.post("/api/installer/verify", json={"password": "m04-pass"}).json()["token"]
-            resp = self.client.delete("/api/snapshots/99999999", headers={"X-Installer-Token": tok})
+            resp = self.client.delete("/api/snapshots/99999999")
             self.assertEqual(resp.status_code, 404)
 
     # ------------------------------------------------------------------

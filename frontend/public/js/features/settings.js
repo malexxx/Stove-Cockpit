@@ -31,7 +31,6 @@ function toggleSettingsAccordion(accId, forceOpen = false) {
   currentInstallerSubTab = accId;
 
   if (accId === "expert") {
-    checkInstallerAuthStatus();
     renderEepromTable();
     loadSnapshots();
     renderHardwareMasks();
@@ -65,6 +64,7 @@ function _isSettingsAccordionAllowedInMode(item) {
   const servedByContainer = Boolean(window.stoveProvider?.isServedByContainer?.());
   const req = item.dataset.requires || "";
   if (req === "container" && !isContainer) return false;
+  if (req === "container-host" && !servedByContainer) return false;
   if (req === "standalone-only" && isContainer) return false;
   if (req === "client-app" && servedByContainer) return false;
   if (item.dataset.accId === "zones") {
@@ -305,7 +305,7 @@ function updateSettingsAccordionSummaries() {
 
   // 6. Système
   const rtcEl = document.getElementById("inst-clock-val");
-  const frontVer = typeof getFrontendVersionLabel === "function" ? getFrontendVersionLabel() : "v0.0.6";
+  const frontVer = typeof getFrontendVersionLabel === "function" ? getFrontendVersionLabel() : "v0.0.7";
   const backVer = typeof getBackendVersionLabel === "function" ? getBackendVersionLabel() : "";
   const rtc = rtcEl ? rtcEl.textContent.trim() : "--:--";
   const verSummary = backVer ? `Front ${frontVer} • Back ${backVer}` : `Front ${frontVer}`;
@@ -323,9 +323,7 @@ function updateSettingsAccordionSummaries() {
   // 7. Expert
   const sumExp = document.getElementById("acc-sum-expert");
   if (sumExp) {
-    sumExp.textContent = installerUnlocked
-      ? "Session Expert active • Snapshots, RAM/EEPROM, Injecteur"
-      : "Verrouillé • Snapshots, RAM/EEPROM, Injecteur";
+    sumExp.textContent = "Snapshots, RAM/EEPROM, Injecteur";
   }
 }
 
@@ -474,40 +472,10 @@ async function saveSettings() {
 
   let j;
   try {
-    j = await window.stoveProvider.saveSettings(payload, getInstallerHeaders());
+    j = await window.stoveProvider.saveSettings(payload);
   } catch (err) {
     const msg = err?.message || "";
-    if (/401|403|installateur|authentification|interdit/i.test(msg)) {
-      openActionModal({
-        title: "🔐 Authentification requise",
-        message: "Saisissez votre mot de passe Agua Cloud (Installateur) pour enregistrer la nouvelle liaison :",
-        showInput: true,
-        inputType: "password",
-        confirmText: "Déverrouiller & Enregistrer",
-        cancelText: "Annuler",
-        onConfirm: async (pwd) => {
-          if (!pwd) {
-            showToast("Mot de passe requis pour modifier ce paramètre.", true);
-            return;
-          }
-          try {
-            const authData = await window.stoveProvider.verifyInstaller(pwd);
-            if (!authData.token) {
-              showToast(authData.detail || "Mot de passe incorrect.", true);
-              return;
-            }
-            installerAuthToken = authData.token;
-            sessionStorage.setItem("nobis_installer_token", installerAuthToken);
-            if (typeof checkInstallerAuthStatus === "function") checkInstallerAuthStatus();
-            await saveSettings();
-          } catch (e) {
-            showToast("Erreur authentification : " + (e?.message || "Mot de passe incorrect"), true);
-          }
-        }
-      });
-    } else {
-      showToast("Erreur : " + (msg || "Échec de l'enregistrement"), true);
-    }
+    showToast("Erreur : " + (msg || "Échec de l'enregistrement"), true);
     return;
   }
 
@@ -557,7 +525,6 @@ async function testConnection() {
     if (isContainer) {
       const res = await window.stoveProvider.container.request("/api/test-connection", {
         method: "POST",
-        headers: getInstallerHeaders(),
         body: payload
       });
       j = await res.json();
@@ -582,8 +549,8 @@ async function testWebhook() {
     return;
   }
   try {
-    await window.stoveProvider.saveSettings({ webhook_url: url }, getInstallerHeaders());
-    const j = await window.stoveProvider.testWebhook(getInstallerHeaders());
+    await window.stoveProvider.saveSettings({ webhook_url: url });
+    const j = await window.stoveProvider.testWebhook();
     showToast(j.message || "Notification de test envoyée avec succès !");
   } catch (e) {
     showToast(e?.message || "Échec de l'envoi Webhook (vérifiez l'URL).", true);
@@ -706,7 +673,7 @@ async function restartBackend() {
     return;
   }
   try {
-    const data = await window.stoveProvider.restartBackend(getInstallerHeaders());
+    const data = await window.stoveProvider.restartBackend();
     showToast(data.message || "🔄 Redémarrage du backend en cours...");
     const startedAt = Date.now();
     const waitReboot = async () => {
@@ -728,11 +695,7 @@ async function restartBackend() {
     };
     waitReboot();
   } catch (err) {
-    if (err?.status === 403) {
-      showToast("🔒 Authentification installateur requise : déverrouillez l'onglet Expert & Registres.", true);
-    } else {
-      showToast(err?.message || "Erreur réseau lors de la demande de redémarrage.", true);
-    }
+    showToast(err?.message || "Erreur réseau lors de la demande de redémarrage.", true);
   }
 }
 
@@ -850,15 +813,11 @@ async function saveUpdateConfig() {
     auto_apply: autoApplyEl ? Boolean(autoApplyEl.checked) : false,
   };
   try {
-    const data = await window.stoveProvider.setUpdateConfig(payload, getInstallerHeaders());
+    const data = await window.stoveProvider.setUpdateConfig(payload);
     renderUpdateStatus(data);
     showToast("✅ Préférences de mise à jour enregistrées.");
   } catch (err) {
-    if (err?.status === 403) {
-      showToast("🔒 Authentification installateur requise : déverrouillez l'onglet Expert & Registres.", true);
-    } else {
-      showToast(err?.message || "Impossible d'enregistrer les options de mise à jour.", true);
-    }
+    showToast(err?.message || "Impossible d'enregistrer les options de mise à jour.", true);
     loadUpdateStatus();
   }
 }
@@ -871,14 +830,9 @@ async function checkInternalUpdate() {
     showToast("⬆️ Vérification de mise à jour en cours...");
     const res = await window.stoveProvider.container.request("/api/system/update/check", {
       method: "POST",
-      headers: getInstallerHeaders(),
       body: channel ? { channel } : {},
     });
     const data = await res.json().catch(() => ({}));
-    if (res.status === 403) {
-      showToast("🔒 Authentification installateur requise : déverrouillez l'onglet Expert & Registres.", true);
-      return;
-    }
     if (!res.ok) {
       showToast(data.detail || "Erreur lors de la vérification de mise à jour.", true);
       return;
@@ -906,15 +860,10 @@ async function applyInternalUpdate() {
     showToast("🚀 Téléchargement et installation de la mise à jour en cours...");
     const res = await window.stoveProvider.container.request("/api/system/update/apply", {
       method: "POST",
-      headers: getInstallerHeaders(),
       body: { channel },
       timeoutMs: 60000,
     });
     const data = await res.json().catch(() => ({}));
-    if (res.status === 403) {
-      showToast("🔒 Authentification installateur requise : déverrouillez l'onglet Expert & Registres.", true);
-      return;
-    }
     if (!res.ok) {
       showToast(data.detail || "Échec de l'installation de la mise à jour interne.", true);
       loadUpdateStatus();
@@ -943,15 +892,11 @@ async function rollbackInternalUpdate() {
   }
   try {
     showToast("⏪ Rollback vers la version précédente en cours...");
-    const data = await window.stoveProvider.rollbackUpdate(getInstallerHeaders());
+    const data = await window.stoveProvider.rollbackUpdate();
     showToast(`🔄 ${data.message || "Rollback déclenché, rechargement..."}`);
     waitForInternalUpdateReload(prevReleaseId, "✅ Rollback terminé ! Rechargement de l'interface...");
   } catch (err) {
-    if (err?.status === 403) {
-      showToast("🔒 Authentification installateur requise : déverrouillez l'onglet Expert & Registres.", true);
-    } else {
-      showToast(err?.message || "Erreur réseau lors du rollback interne.", true);
-    }
+    showToast(err?.message || "Erreur réseau lors du rollback interne.", true);
   }
 }
 
@@ -1016,13 +961,8 @@ async function downloadSystemBackup() {
     showToast("💾 Génération de la sauvegarde complète en cours...");
     const res = await window.stoveProvider.container.request("/api/system/backup", {
       method: "GET",
-      headers: getInstallerHeaders(),
       timeoutMs: 60000,
     });
-    if (res.status === 403) {
-      showToast("🔒 Authentification installateur requise : déverrouillez l'onglet Expert & Registres.", true);
-      return;
-    }
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       showToast(errData.detail || "Échec de la génération de la sauvegarde.", true);
@@ -1064,16 +1004,12 @@ async function restoreSystemBackupFile(inputEl) {
   }
   try {
     showToast("📥 Restauration de la sauvegarde en cours...");
-    const data = await window.stoveProvider.restoreBackupFile(file, getInstallerHeaders());
+    const data = await window.stoveProvider.restoreBackupFile(file);
     showToast(`✅ ${data.message || "Sauvegarde restaurée avec succès !"}`);
     if (typeof loadDashboard === "function") await loadDashboard();
     loadStorageStatus();
   } catch (err) {
-    if (err?.status === 403) {
-      showToast("🔒 Authentification installateur requise : déverrouillez l'onglet Expert & Registres.", true);
-    } else {
-      showToast(err?.message || "Échec de la restauration de la sauvegarde.", true);
-    }
+    showToast(err?.message || "Échec de la restauration de la sauvegarde.", true);
   } finally {
     inputEl.value = "";
   }

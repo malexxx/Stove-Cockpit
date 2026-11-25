@@ -9,7 +9,6 @@ from fastapi import APIRouter, HTTPException, Request
 from database import db_log, get_active_mode
 from matter_service import matter_manager
 from schemas import MatterWebhookPayload
-from services.installer_auth import require_installer_auth_if_configured
 from telemetry import execute_register_write
 
 router = APIRouter(prefix="/api/matter", tags=["Matter"])
@@ -21,18 +20,16 @@ async def api_matter_status():
     return await matter_manager.get_status()
 
 
-@router.post("/restart", responses={403: {"description": "Authentification installateur requise"}})
-async def api_matter_restart(request: Request):
+@router.post("/restart")
+async def api_matter_restart():
     """Redémarre le pont Thermostat Matter."""
-    require_installer_auth_if_configured(request)
     await matter_manager.stop()
     return await matter_manager.ensure_started(force=True)
 
 
 @router.post("/factory-reset")
-async def api_matter_factory_reset(request: Request):
+async def api_matter_factory_reset():
     """Réinitialise l'appairage Matter et génère un nouveau code d'appairage."""
-    require_installer_auth_if_configured(request)
     return await matter_manager.factory_reset()
 
 

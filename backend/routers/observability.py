@@ -19,7 +19,7 @@ from database import (
     query_telemetry_range,
 )
 from schemas import ClientErrorPayload
-from services.installer_auth import _get_client_ip
+from services.client_ip import _get_client_ip
 
 router = APIRouter(prefix="/api", tags=["Observability & Exports"])
 

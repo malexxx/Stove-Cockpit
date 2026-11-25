@@ -1,7 +1,7 @@
 """Tests API cœur : healthcheck, télémétrie, dashboard, pilotage poêle, calibration & UI mobile."""
 import re
 
-from tests.helpers import SimulationApiTestCase, get_installer_auth_headers
+from tests.helpers import SimulationApiTestCase
 
 
 class TestAPIEndpoints(SimulationApiTestCase):
@@ -69,8 +69,7 @@ class TestAPIEndpoints(SimulationApiTestCase):
         self.assertIn("pellet_brand", data)
 
     def test_pellet_batch_raz_endpoint(self):
-        headers = get_installer_auth_headers(self.client)
-        resp = self.client.post("/api/pellet-batch/raz", json={"pellet_brand": "DINplus Test Lot A1"}, headers=headers)
+        resp = self.client.post("/api/pellet-batch/raz", json={"pellet_brand": "DINplus Test Lot A1"})
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["status"], "ok")
@@ -218,9 +217,8 @@ class TestAPIEndpoints(SimulationApiTestCase):
 
     def test_calibration_api_endpoints_background_flow(self):
         """Vérifie le cycle des endpoints API /api/calibration/ en arrière-plan."""
-        headers = get_installer_auth_headers(self.client)
         # 1. Reset
-        r_reset = self.client.post("/api/calibration/reset", headers=headers)
+        r_reset = self.client.post("/api/calibration/reset")
         self.assertEqual(r_reset.status_code, 200)
 
         # 2. Status initial
@@ -231,7 +229,7 @@ class TestAPIEndpoints(SimulationApiTestCase):
         self.assertEqual(data["state"], "IDLE")
 
         # 3. Step 1 : Pré-contrôle
-        r_s1 = self.client.post("/api/calibration/step1-start", json={"mode": "COMBINED_BOTH"}, headers=headers)
+        r_s1 = self.client.post("/api/calibration/step1-start", json={"mode": "COMBINED_BOTH"})
         self.assertEqual(r_s1.status_code, 200)
         self.assertTrue(r_s1.json()["success"])
 

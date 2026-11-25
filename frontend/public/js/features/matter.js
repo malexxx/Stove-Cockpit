@@ -157,7 +157,7 @@ function confirmResetMatterPairing() {
     onConfirm: async () => {
       try {
         showToast("Réinitialisation du pont Matter en cours...");
-        const data = await window.stoveProvider.factoryResetMatter(getInstallerHeaders());
+        const data = await window.stoveProvider.factoryResetMatter();
         renderMatterStatus(data);
         showToast("Nouveau QR Code Matter généré !");
       } catch (err) {

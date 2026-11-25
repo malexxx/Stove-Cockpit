@@ -4,21 +4,9 @@ import unittest
 
 from fastapi.testclient import TestClient
 
-from database import encrypt_setting_value, get_settings_dict, get_sys_db, init_all_databases
+from database import encrypt_setting_value, get_sys_db, init_all_databases
 from main import app
 from matter_service import matter_manager
-from services.installer_auth import _failed_auth_attempts, clear_installer_sessions
-
-
-def get_installer_auth_headers(client: TestClient) -> dict:
-    """Retourne les en-têtes X-Installer-Token valides si agua_password est configuré en base."""
-    pwd = (get_settings_dict().get("agua_password") or "").strip()
-    if not pwd:
-        return {}
-    resp = client.post("/api/installer/verify", json={"password": pwd})
-    if resp.status_code == 200:
-        return {"X-Installer-Token": resp.json().get("token", "")}
-    return {}
 
 
 def get_matter_webhook_headers(extra: dict | None = None) -> dict:
@@ -101,10 +89,6 @@ class BugBountyTestCase(unittest.TestCase):
     def setUpClass(cls):
         init_all_databases()
         cls.client = TestClient(app, raise_server_exceptions=False)
-
-    def tearDown(self):
-        clear_installer_sessions()
-        _failed_auth_attempts.clear()
 
 
 class SimulationApiTestCase(unittest.TestCase):

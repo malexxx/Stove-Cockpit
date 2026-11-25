@@ -354,7 +354,7 @@ async function loadSnapshots() {
   if (!window.stoveProvider?.isContainerActive?.()) return;
   let snaps;
   try {
-    snaps = await window.stoveProvider.getSnapshots(getInstallerHeaders());
+    snaps = await window.stoveProvider.getSnapshots();
   } catch {
     return;
   }
@@ -392,7 +392,7 @@ async function createSnapshot() {
   const nameInp = document.getElementById("snap-name-input");
   const name = nameInp ? nameInp.value : "";
   try {
-    await window.stoveProvider.createSnapshot(name, false, getInstallerHeaders());
+    await window.stoveProvider.createSnapshot(name, false);
     if (nameInp) nameInp.value = "";
     await loadSnapshots();
     showToast("Snapshot des registres et paramètres enregistré !");
@@ -408,7 +408,7 @@ function restoreSnapshot(id, name) {
     confirmText: "Restaurer",
     onConfirm: async () => {
       try {
-        const j = await window.stoveProvider.restoreSnapshot(id, getInstallerHeaders());
+        const j = await window.stoveProvider.restoreSnapshot(id);
         await loadDashboard();
         await loadAudit();
         showToast(`Snapshot restauré (${j.restored_registers} registres réécrits en batch).`);
@@ -426,7 +426,7 @@ function deleteSnapshot(id) {
     confirmText: "Supprimer",
     onConfirm: async () => {
       try {
-        await window.stoveProvider.deleteSnapshot(id, getInstallerHeaders());
+        await window.stoveProvider.deleteSnapshot(id);
         await loadSnapshots();
         showToast(`Snapshot #${id} supprimé.`);
       } catch (e) {
@@ -434,149 +434,6 @@ function deleteSnapshot(id) {
       }
     }
   });
-}
-
-// =============================================================================
-// AUTHENTIFICATION SÉCURISÉE MENU INSTALLATEUR (CLOUD AGUA PASSWORD)
-// =============================================================================
-
-async function checkInstallerAuthStatus(forceRefresh = false) {
-  const lockScreen = document.getElementById("installer-lock-screen");
-  const unlockedContent = document.getElementById("installer-unlocked-content");
-  const noPwdAlert = document.getElementById("installer-no-pwd-alert");
-  const errBox = document.getElementById("installer-auth-error");
-  const authPill = document.getElementById("installer-auth-pill");
-  const authPillText = document.getElementById("installer-auth-pill-text");
-  const lockIcon = document.getElementById("subtab-expert-lock-icon");
-
-  if (!lockScreen || !unlockedContent) return;
-
-  try {
-    const headers = {};
-    if (installerAuthToken) {
-      headers["X-Installer-Token"] = installerAuthToken;
-    }
-    const data = await window.stoveProvider.getInstallerStatus(headers);
-
-    if (data.authenticated) {
-      lockScreen.classList.add("hidden");
-      unlockedContent.classList.remove("hidden");
-      if (authPill) authPill.className = "text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-600 flex items-center gap-1";
-      if (authPillText) authPillText.textContent = "Expert Déverrouillé";
-      if (lockIcon) lockIcon.textContent = "🔓";
-      if (errBox) errBox.classList.add("hidden");
-      document.querySelectorAll(".inst-input").forEach(el => { el.disabled = false; });
-      loadSnapshots();
-    } else {
-      if (installerAuthToken) {
-        installerAuthToken = "";
-        sessionStorage.removeItem("nobis_installer_token");
-      }
-      lockScreen.classList.remove("hidden");
-      unlockedContent.classList.add("hidden");
-      if (authPill) authPill.className = "text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700 flex items-center gap-1";
-      if (authPillText) authPillText.textContent = "Expert Verrouillé";
-      if (lockIcon) lockIcon.textContent = "🔒";
-
-      if (noPwdAlert) {
-        noPwdAlert.classList.toggle("hidden", !!data.has_password_configured);
-      }
-      const pwdInput = document.getElementById("installer-password-input");
-      if (pwdInput) {
-        pwdInput.disabled = !data.has_password_configured;
-        if (data.has_password_configured) {
-          setTimeout(() => pwdInput.focus(), 100);
-        }
-      }
-    }
-  } catch (err) {
-    console.error("Erreur vérification statut installateur:", err);
-  }
-}
-
-async function submitInstallerAuth(event) {
-  if (event) event.preventDefault();
-  const pwdInput = document.getElementById("installer-password-input");
-  const errBox = document.getElementById("installer-auth-error");
-  const btn = document.getElementById("installer-auth-submit-btn");
-  if (!pwdInput) return;
-
-  const password = pwdInput.value;
-  if (!password) {
-    if (errBox) {
-      errBox.textContent = "Veuillez saisir votre mot de passe Agua Cloud.";
-      errBox.classList.remove("hidden");
-    }
-    return;
-  }
-
-  if (errBox) errBox.classList.add("hidden");
-  if (btn) {
-    btn.disabled = true;
-    btn.classList.add("opacity-60", "cursor-wait");
-  }
-
-  try {
-    const data = await window.stoveProvider.verifyInstaller(password);
-
-    if ((data.authenticated || data.success || data.status === "ok") && data.token) {
-      installerAuthToken = data.token;
-      sessionStorage.setItem("nobis_installer_token", installerAuthToken);
-      pwdInput.value = "";
-      if (errBox) errBox.classList.add("hidden");
-      showToast("Accès Installateur déverrouillé !");
-      await checkInstallerAuthStatus();
-    } else {
-      let errMsg = data.detail || "Mot de passe Cloud incorrect.";
-      if (errBox) {
-        errBox.textContent = errMsg;
-        errBox.classList.remove("hidden");
-      }
-      pwdInput.focus();
-      pwdInput.select();
-    }
-  } catch (err) {
-    console.error("Erreur authentification installateur:", err);
-    if (errBox) {
-      errBox.textContent = err?.status === 429
-        ? "Trop de tentatives échouées. Veuillez patienter 60 secondes."
-        : (err?.message || "Erreur de communication avec le serveur.");
-      errBox.classList.remove("hidden");
-    }
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.classList.remove("opacity-60", "cursor-wait");
-    }
-  }
-}
-
-async function lockInstallerMenu() {
-  try {
-    if (installerAuthToken) {
-      await window.stoveProvider.lockInstaller({ "X-Installer-Token": installerAuthToken });
-    }
-  } catch (err) {
-    console.warn("Erreur lock installer:", err);
-  } finally {
-    installerAuthToken = "";
-    sessionStorage.removeItem("nobis_installer_token");
-    showToast("Menu installateur reverrouillé.");
-    await checkInstallerAuthStatus();
-  }
-}
-
-function toggleInstallerPasswordVisibility() {
-  const inp = document.getElementById("installer-password-input");
-  const icon = document.getElementById("installer-pwd-toggle-icon");
-  if (!inp) return;
-  if (inp.type === "password") {
-    inp.type = "text";
-    if (icon) icon.textContent = "🙈";
-  } else {
-    inp.type = "password";
-    if (icon) icon.textContent = "👁️";
-  }
 }
 
 async function loadAudit() {
@@ -617,7 +474,7 @@ function rollbackAudit(id, oldVal) {
     confirmText: "Restaurer",
     onConfirm: async () => {
       try {
-        await window.stoveProvider.rollbackAudit(id, getInstallerHeaders());
+        await window.stoveProvider.rollbackAudit(id);
         await refreshLatestOnly();
         await loadAudit();
         showToast("Rollback effectué !");
@@ -705,7 +562,7 @@ async function refreshAguaRegistersMap() {
   }
   if (countLabel) countLabel.textContent = "Scan Agua Cloud en cours...";
   try {
-    const data = await window.stoveProvider.getAguaRegistersMap(getInstallerHeaders());
+    const data = await window.stoveProvider.getAguaRegistersMap();
     if (data?.status === "offline") {
       aguaRegMapEntries = [];
       aguaRegMapBuffer = {};

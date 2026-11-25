@@ -6,7 +6,6 @@ import os
 import socket
 import sqlite3
 import tempfile
-import time
 from unittest.mock import patch
 
 from starlette.requests import Request
@@ -16,64 +15,24 @@ import telemetry
 from config import BASE_DIR
 from database import get_db
 from main import MAX_SSE_SUBSCRIBERS
-from routers.installer import (
-    _clean_expired_installer_sessions,
-    _failed_auth_attempts,
-    _get_client_ip,
-    clear_installer_sessions,
-)
+from services.client_ip import _get_client_ip
 from tests.helpers import BugBountyTestCase, get_matter_webhook_headers, temporary_settings
 
 
 class TestSecurityHardening(BugBountyTestCase):
-    def test_bb01_privileged_endpoints_require_installer_auth(self):
-        clear_installer_sessions()
-        _failed_auth_attempts.clear()
+    def test_bb01_privileged_endpoints_accessible_without_installer_auth(self):
         with temporary_settings({"comm_mode": "simulation", "agua_password": "bb01-test-password"}):
-            self.assertEqual(self.client.post("/api/snapshots", json={"label": "unauth"}).status_code, 403)
-            self.assertEqual(self.client.post("/api/snapshots/1/restore").status_code, 403)
-            self.assertEqual(self.client.delete("/api/snapshots/1").status_code, 403)
-            self.assertEqual(
-                self.client.post("/api/settings", json={"webhook_url": "https://example.com/hook"}).status_code,
-                403,
-            )
-            self.assertEqual(
-                self.client.post(
-                    "/api/command",
-                    json={"reg_key": "RAW_OFFSET_33100", "offset": 33100, "value": 1.0},
-                ).status_code,
-                403,
-            )
-            self.assertEqual(
-                self.client.post(
-                    "/api/command-batch",
-                    json={
-                        "commands": [
-                            {"reg_key": "power_level", "offset": 33120, "value": 3.0},
-                            {"reg_key": "unknown_raw_reg", "offset": 33100, "value": 1.0},
-                        ]
-                    },
-                ).status_code,
-                403,
-            )
-            self.assertEqual(self.client.post("/api/matter/factory-reset").status_code, 403)
+            snap_resp = self.client.post("/api/snapshots", json={"label": "bb01-temp"})
+            self.assertEqual(snap_resp.status_code, 200)
+            snap_id = snap_resp.json()["id"]
+            del_resp = self.client.delete(f"/api/snapshots/{snap_id}")
+            self.assertEqual(del_resp.status_code, 200)
 
             non_priv = self.client.post(
                 "/api/command",
                 json={"reg_key": "power_level", "offset": 33120, "value": 4.0},
             )
             self.assertEqual(non_priv.status_code, 200)
-
-            auth_resp = self.client.post("/api/installer/verify", json={"password": "bb01-test-password"})
-            self.assertEqual(auth_resp.status_code, 200)
-            token = auth_resp.json()["token"]
-            headers = {"X-Installer-Token": token}
-
-            snap_resp = self.client.post("/api/snapshots", json={"label": "bb01-temp"}, headers=headers)
-            self.assertEqual(snap_resp.status_code, 200)
-            snap_id = snap_resp.json()["id"]
-            del_resp = self.client.delete(f"/api/snapshots/{snap_id}", headers=headers)
-            self.assertEqual(del_resp.status_code, 200)
 
     def test_bb03_ssrf_webhook_and_local_gateway_validation(self):
         blocked_webhooks = [
@@ -112,14 +71,10 @@ class TestSecurityHardening(BugBountyTestCase):
             self.assertFalse(clients.is_safe_gateway_url(bad_gw), msg=f"Should block gateway URL: {bad_gw}")
 
         with temporary_settings({"comm_mode": "simulation", "agua_password": "bb03-pass"}):
-            clear_installer_sessions()
-            tok = self.client.post("/api/installer/verify", json={"password": "bb03-pass"}).json()["token"]
-            headers = {"X-Installer-Token": tok}
             self.assertEqual(
                 self.client.post(
                     "/api/settings",
                     json={"webhook_url": "http://169.254.169.254/latest/meta-data"},
-                    headers=headers,
                 ).status_code,
                 400,
             )
@@ -127,7 +82,6 @@ class TestSecurityHardening(BugBountyTestCase):
                 self.client.post(
                     "/api/settings",
                     json={"local_gateway_url": "http://127.0.0.1:8080"},
-                    headers=headers,
                 ).status_code,
                 400,
             )
@@ -191,11 +145,11 @@ class TestSecurityHardening(BugBountyTestCase):
             for q in dummy_queues:
                 telemetry.sse_subscribers.discard(q)
 
-    def test_bb09_forwarded_ip_and_failed_attempts_cleanup(self):
+    def test_bb09_forwarded_ip_lookup(self):
         proxied_scope = {
             "type": "http",
             "method": "POST",
-            "path": "/api/installer/verify",
+            "path": "/api/logs/client-error",
             "headers": [(b"x-forwarded-for", b"203.0.113.42, 10.0.0.1")],
             "client": ("127.0.0.1", 54321),
         }
@@ -204,21 +158,11 @@ class TestSecurityHardening(BugBountyTestCase):
         spoofed_scope = {
             "type": "http",
             "method": "POST",
-            "path": "/api/installer/verify",
+            "path": "/api/logs/client-error",
             "headers": [(b"x-forwarded-for", b"1.2.3.4")],
             "client": ("198.51.100.5", 54321),
         }
         self.assertEqual(_get_client_ip(Request(spoofed_scope)), "198.51.100.5")
-
-        _failed_auth_attempts["198.51.100.99"] = (9, time.time() - 3600)
-        _failed_auth_attempts["198.51.100.100"] = (2, time.time())
-        try:
-            _clean_expired_installer_sessions()
-            self.assertNotIn("198.51.100.99", _failed_auth_attempts)
-            self.assertIn("198.51.100.100", _failed_auth_attempts)
-        finally:
-            _failed_auth_attempts.pop("198.51.100.99", None)
-            _failed_auth_attempts.pop("198.51.100.100", None)
 
     def test_bb15_batch_max_length_and_deployment_hardening(self):
         with temporary_settings({"comm_mode": "simulation"}):

@@ -20,11 +20,6 @@ from services.cred_sync_service import (
     decrypt_cred_envelope,
     encrypt_cred_envelope,
 )
-from services.installer_auth import (
-    clear_installer_sessions,
-    is_installer_authenticated,
-    require_installer_auth_if_configured,
-)
 from services.lifecycle import spawn_background_task
 from services.storage_service import (
     MAX_BACKUP_UPLOAD_BYTES,
@@ -116,23 +111,18 @@ async def api_system_pairing_info(request: Request):
     return JSONResponse(content=payload, headers={"Cache-Control": "no-store"})
 
 
-@router.post("/system/pairing-token/rotate", responses={403: {"description": "Authentification installateur requise"}})
-async def api_system_pairing_token_rotate(request: Request):
+@router.post("/system/pairing-token/rotate")
+async def api_system_pairing_token_rotate():
     """Régénère le jeton API du conteneur compagnon."""
-    require_installer_auth_if_configured(request)
     new_tok = await asyncio.to_thread(rotate_api_token)
     active_mode = await asyncio.to_thread(get_active_mode)
     db_log("WARNING", "SECURITY", "Jeton API du conteneur compagnon régénéré.", active_mode)
     return JSONResponse(content={"status": "ok", "api_token": new_tok}, headers={"Cache-Control": "no-store"})
 
 
-@router.post(
-    "/system/cloud-credentials/ticket",
-    responses={403: {"description": "Authentification installateur requise"}},
-)
+@router.post("/system/cloud-credentials/ticket")
 async def api_system_cloud_sync_ticket(request: Request):
     """Génère un QR Code incluant un ticket éphémère à usage unique (5 min) pour transférer les identifiants Cloud."""
-    require_installer_auth_if_configured(request)
     ticket = await asyncio.to_thread(create_sync_ticket, 300)
     base_url = str(request.base_url).rstrip("/")
     pairing_payload = await asyncio.to_thread(build_pairing_info, base_url, ticket["sync_ticket"])
@@ -146,7 +136,7 @@ async def api_system_cloud_sync_ticket(request: Request):
     "/system/cloud-credentials/export",
     responses={
         401: {"description": "Jeton API du conteneur requis ou invalide"},
-        403: {"description": "Autorisation ou ticket requis"},
+        403: {"description": "Ticket de transfert invalide ou expiré"},
         404: {"description": "Aucun identifiant Cloud ou météo configuré"},
     },
 )
@@ -157,20 +147,12 @@ async def api_system_cloud_credentials_export(
     """Exporte les identifiants Cloud et la station météo du conteneur chiffrés en AES-256-GCM."""
     api_tok = _require_valid_api_token(request)
     settings = await asyncio.to_thread(get_settings_dict)
-    has_pwd = bool((settings.get("agua_password") or "").strip())
 
     ticket_val = (payload.sync_ticket or "").strip() if payload and payload.sync_ticket else ""
     if ticket_val:
         if not consume_sync_ticket(ticket_val):
             raise HTTPException(status_code=403, detail="Ticket de synchronisation invalide ou expiré.")
         auth_proof = ticket_val
-    elif is_installer_authenticated(request):
-        auth_proof = request.headers.get("X-Installer-Token", "").strip()
-    elif has_pwd:
-        raise HTTPException(
-            status_code=403,
-            detail="Déverrouillage Installateur ou QR Code de transfert requis pour exporter les identifiants Cloud.",
-        )
     else:
         auth_proof = ""
 
@@ -193,22 +175,18 @@ async def api_system_cloud_credentials_export(
     responses={
         400: {"description": "Enveloppe chiffrée invalide ou expirée"},
         401: {"description": "Jeton API du conteneur requis ou invalide"},
-        403: {"description": "Authentification installateur requise"},
+        403: {"description": "Ticket de transfert invalide ou expiré"},
     },
 )
 async def api_system_cloud_credentials_import(payload: CloudSyncImportPayload, request: Request):
     """Importe dans le conteneur des identifiants Cloud chiffrés en AES-256-GCM depuis l'application."""
     api_tok = _require_valid_api_token(request)
-    current = await asyncio.to_thread(get_settings_dict)
-    has_existing_pwd = bool((current.get("agua_password") or "").strip())
 
     ticket_val = (payload.sync_ticket or "").strip() if payload.sync_ticket else ""
     if ticket_val:
         if not consume_sync_ticket(ticket_val):
             raise HTTPException(status_code=403, detail="Ticket de synchronisation invalide ou expiré.")
         auth_proof = ticket_val
-    elif is_installer_authenticated(request):
-        auth_proof = request.headers.get("X-Installer-Token", "").strip()
     else:
         auth_proof = ""
 
@@ -218,11 +196,6 @@ async def api_system_cloud_credentials_import(payload: CloudSyncImportPayload, r
         raise HTTPException(status_code=400, detail=f"Enveloppe chiffrée invalide ou expirée : {exc}") from exc
 
     has_incoming_cloud_auth = bool((creds.get("agua_email") or "").strip() or (creds.get("agua_password") or "").strip())
-    if has_existing_pwd and has_incoming_cloud_auth and not auth_proof:
-        raise HTTPException(
-            status_code=403,
-            detail="Authentification Installateur ou QR Code de transfert requis pour remplacer les identifiants Cloud du conteneur.",
-        )
 
     to_save = {
         k: v
@@ -241,8 +214,6 @@ async def api_system_cloud_credentials_import(payload: CloudSyncImportPayload, r
     await asyncio.to_thread(_persist_settings_dict, to_save)
     if has_incoming_cloud_auth:
         agua_client.reset_session()
-    if "agua_password" in to_save and to_save["agua_password"] != str(current.get("agua_password") or ""):
-        clear_installer_sessions()
 
     new_mode = await asyncio.to_thread(get_active_mode)
     db_log("INFO", "SECURITY", "Import chiffré AES-256-GCM des paramètres Cloud/Météo depuis application.", new_mode)
@@ -254,12 +225,10 @@ async def api_system_cloud_credentials_import(payload: CloudSyncImportPayload, r
     "/system/backup",
     responses={
         200: {"content": {"application/zip": {}}},
-        403: {"description": "Authentification installateur requise"},
     },
 )
-async def api_system_backup_download(request: Request):
+async def api_system_backup_download():
     """Télécharge une sauvegarde ZIP atomique complète (bases SQLite, .secret.key et état Matter)."""
-    require_installer_auth_if_configured(request)
     zip_bytes = await asyncio.to_thread(create_backup_zip_bytes)
     active_mode = await asyncio.to_thread(get_active_mode)
     db_log("INFO", "BACKUP", f"Export sauvegarde complète généré ({len(zip_bytes)} octets).", active_mode)
@@ -279,13 +248,11 @@ async def api_system_backup_download(request: Request):
     "/system/backup/restore",
     responses={
         400: {"description": "Archive ZIP invalide ou rejetée"},
-        403: {"description": "Authentification installateur requise"},
         413: {"description": "Archive trop volumineuse"},
     },
 )
 async def api_system_backup_restore(request: Request):
     """Restaure atomiquement une sauvegarde ZIP validée dans DATA_DIR (bases SQLite, .secret.key, Matter)."""
-    require_installer_auth_if_configured(request)
     body = await request.body()
     if len(body) > MAX_BACKUP_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="Archive de sauvegarde trop volumineuse (limite 100 Mo).")
@@ -295,9 +262,6 @@ async def api_system_backup_restore(request: Request):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    if "nobis_a10_system.db" in result.get("restored_files", []):
-        clear_installer_sessions()
-
     active_mode = await asyncio.to_thread(get_active_mode)
     msg = f"Restauration sauvegarde ZIP effectuée ({result['restored_count']} fichier(s))."
     db_log("WARNING", "BACKUP", msg, active_mode)
@@ -305,12 +269,11 @@ async def api_system_backup_restore(request: Request):
     return result
 
 
-@router.post("/system/restart", responses={403: {"description": "Authentification installateur requise"}})
-async def api_system_restart(request: Request):
+@router.post("/system/restart")
+async def api_system_restart():
     """Déclenche un redémarrage propre du backend (relancé automatiquement par Docker)."""
     import routers.system as _sys_facade
 
-    require_installer_auth_if_configured(request)
     active_mode = get_active_mode()
     db_log("COMMAND", "SYSTEM", "Redémarrage du backend demandé depuis l'interface.", active_mode)
     add_container_log("WARNING", "SYSTEM", "Redémarrage du backend demandé depuis l'interface.")
@@ -355,16 +318,13 @@ async def api_system_update_status():
     "/system/update/check",
     responses={
         400: {"description": "Canal de mise à jour invalide"},
-        403: {"description": "Authentification installateur requise"},
         502: {"description": "GitHub API inaccessible ou en erreur"},
     },
 )
 async def api_system_update_check(
-    request: Request,
     payload: Annotated[UpdateCheckPayload | None, Body()] = None,
 ):
     """Interroge GitHub (sans recréer le conteneur) pour vérifier la disponibilité d'une mise à jour."""
-    require_installer_auth_if_configured(request)
     channel = payload.channel if payload else None
     try:
         res = await check_for_updates(channel=channel)
@@ -382,17 +342,14 @@ async def api_system_update_check(
     "/system/update/apply",
     responses={
         400: {"description": "Environnement non supporté ou archive invalide"},
-        403: {"description": "Authentification installateur requise"},
         409: {"description": "Une mise à jour est déjà en cours"},
         502: {"description": "Téléchargement GitHub impossible"},
     },
 )
 async def api_system_update_apply(
-    request: Request,
     payload: Annotated[UpdateApplyPayload | None, Body()] = None,
 ):
     """Télécharge, valide, sauvegarde et applique une mise à jour interne sans perte de /app/data."""
-    require_installer_auth_if_configured(request)
     channel = payload.channel if payload else None
     force = bool(payload.force) if payload else False
     try:
@@ -409,13 +366,11 @@ async def api_system_update_apply(
     "/system/update/rollback",
     responses={
         400: {"description": "Aucune mise à jour interne active à annuler"},
-        403: {"description": "Authentification installateur requise"},
         409: {"description": "Une opération de mise à jour est déjà en cours"},
     },
 )
-async def api_system_update_rollback(request: Request):
+async def api_system_update_rollback():
     """Bascule vers la version précédente ou l'image Docker d'origine puis redémarre en interne."""
-    require_installer_auth_if_configured(request)
     try:
         return await rollback_internal_update()
     except ValueError as exc:
@@ -428,12 +383,10 @@ async def api_system_update_rollback(request: Request):
     "/system/update/config",
     responses={
         400: {"description": "Paramètres de mise à jour invalides"},
-        403: {"description": "Authentification installateur requise"},
     },
 )
-async def api_system_update_config(request: Request, payload: UpdateConfigPayload):
+async def api_system_update_config(payload: UpdateConfigPayload):
     """Met à jour le canal et les options d'auto-vérification / auto-installation des MAJ."""
-    require_installer_auth_if_configured(request)
     try:
         await asyncio.to_thread(
             save_update_settings,
@@ -449,13 +402,11 @@ async def api_system_update_config(request: Request, payload: UpdateConfigPayloa
 @router.post(
     "/system/check-update",
     responses={
-        403: {"description": "Authentification installateur requise"},
         502: {"description": "Service de mise à jour injoignable ou en erreur"},
     },
 )
-async def api_system_check_update(request: Request):
+async def api_system_check_update():
     """Vérifie les mises à jour via Watchtower si WATCHTOWER_URL est configuré, sinon via GitHub."""
-    require_installer_auth_if_configured(request)
     active_mode = await asyncio.to_thread(get_active_mode)
     env_watchtower_url = os.environ.get("WATCHTOWER_URL", "").strip()
     if env_watchtower_url:

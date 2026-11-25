@@ -3,7 +3,7 @@ import asyncio
 import logging
 import os
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 import clients as _clients_pkg
@@ -27,7 +27,6 @@ from database import (
 )
 from matter_service import matter_manager
 from schemas import SettingsPayload, TestConnectionPayload, TestWebhookPayload
-from services.installer_auth import clear_installer_sessions, require_installer_auth_if_configured
 from services.lifecycle import scheduler
 from telemetry import collect_telemetry_cycle
 
@@ -165,27 +164,15 @@ async def _apply_matter_settings_update(raw_dict: dict, new_mode: str) -> None:
 
 
 @router.post("/settings")
-async def api_save_settings(payload: SettingsPayload, request: Request):
+async def api_save_settings(payload: SettingsPayload):
     """Sauvegarde les paramètres de configuration dans la base système SQLite."""
     raw_dict = payload.model_dump(exclude_none=True)
-    current_settings = get_settings_dict()
-    sensitive_changed = any(
-        k in _SENSITIVE_SETTINGS
-        and raw_dict[k] is not None
-        and str(raw_dict[k]) != "********"
-        and str(raw_dict[k]) != str(current_settings.get(k, ""))
-        for k in raw_dict
-    )
-    if sensitive_changed:
-        require_installer_auth_if_configured(request)
 
     await _validate_and_normalize_settings(raw_dict)
     _persist_settings_dict(raw_dict)
 
     if any(k in _CLOUD_AUTH_KEYS for k in raw_dict):
         agua_client.reset_session()
-    if "agua_password" in raw_dict and raw_dict["agua_password"] != "********":
-        clear_installer_sessions()
 
     _apply_poll_interval_update(raw_dict)
 
@@ -203,12 +190,10 @@ async def api_save_settings(payload: SettingsPayload, request: Request):
     responses={
         200: {"description": "Notification de test envoyée avec succès"},
         400: {"description": "URL de webhook invalide ou rejetée"},
-        403: {"description": "Authentification installateur requise"},
     },
 )
-async def api_test_webhook(payload: TestWebhookPayload, request: Request):
+async def api_test_webhook(payload: TestWebhookPayload):
     """Envoie une notification push de test avec vérification stricte anti-SSRF."""
-    require_installer_auth_if_configured(request)
     url = (payload.webhook_url or "").strip()
     if not url:
         raise HTTPException(status_code=400, detail="Aucune URL de Webhook / ntfy.sh renseignée.")
@@ -235,12 +220,10 @@ async def api_test_webhook(payload: TestWebhookPayload, request: Request):
     "/test-connection",
     responses={
         200: {"description": "Résultat du test de communication"},
-        403: {"description": "Authentification installateur requise"},
     },
 )
-async def api_test_connection(payload: TestConnectionPayload, request: Request):
+async def api_test_connection(payload: TestConnectionPayload):
     """Teste la communication avec le protocole sélectionné (Agua Cloud, Passerelle UART ou Simulation)."""
-    require_installer_auth_if_configured(request)
     raw_dict = payload.model_dump(exclude_none=True)
     mode = raw_dict.get("comm_mode", "agua_cloud")
     settings = get_settings_dict()
@@ -275,10 +258,9 @@ async def api_test_connection(payload: TestConnectionPayload, request: Request):
             return JSONResponse(status_code=200, content={"status": "error", "details": f"Erreur Passerelle UART : {str(e)}"})
 
 
-@router.get("/agua-registers-map", responses={403: {"description": "Authentification installateur requise"}})
-async def api_agua_registers_map(request: Request):
+@router.get("/agua-registers-map")
+async def api_agua_registers_map():
     """Scanne et retourne la cartographie exhaustive des registres Agua IOT."""
-    require_installer_auth_if_configured(request)
     settings = get_settings_dict()
     try:
         reg_map = await agua_client.scan_registers_map(settings)

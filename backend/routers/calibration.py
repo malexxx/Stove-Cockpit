@@ -6,13 +6,12 @@ import asyncio
 import os
 from typing import Annotated
 
-from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi import APIRouter, Body, HTTPException
 from fastapi.responses import HTMLResponse
 
 from config import BASE_DIR
 from database import get_active_mode, get_latest_telemetry, get_registers_dict
 from schemas import CalibrationStep1Payload, CalibrationStep3Payload
-from services.installer_auth import require_installer_auth_if_configured
 from telemetry import execute_register_write, execute_registers_batch_write
 
 router = APIRouter(tags=["Calibration"])
@@ -49,13 +48,11 @@ async def api_calibration_status():
     return calib_srv.get_status(get_latest_telemetry())
 
 
-@router.post("/api/calibration/step1-start", responses={403: {"description": "Authentification installateur requise"}})
+@router.post("/api/calibration/step1-start")
 async def api_calibration_step1_start(
-    request: Request,
     payload: Annotated[CalibrationStep1Payload, Body()] = _CALIB_STEP1_DEFAULT,
 ):
     """Étape 1 : Choix du mode et désactivation automatique de POWERFUL (P8)."""
-    require_installer_auth_if_configured(request)
     from src.calibration.calibration_service import build_sample_from_record, get_calibration_service
 
     calib_srv = get_calibration_service()
@@ -71,10 +68,9 @@ async def api_calibration_step1_start(
     return calib_srv.start_preflight(mode_str, sample, disable_p8_fn=lambda: pwf_ok)
 
 
-@router.post("/api/calibration/step2-confirm-al03", responses={403: {"description": "Authentification installateur requise"}})
-async def api_calibration_step2_confirm(request: Request):
+@router.post("/api/calibration/step2-confirm-al03")
+async def api_calibration_step2_confirm():
     """Étape 2 : Confirmation de l'état initial AL-03 et réarmement automatique."""
-    require_installer_auth_if_configured(request)
     from src.calibration.calibration_service import build_sample_from_record, get_calibration_service
 
     calib_srv = get_calibration_service()
@@ -90,13 +86,11 @@ async def api_calibration_step2_confirm(request: Request):
     return calib_srv.confirm_initial_al03(sample, reset_alarm_fn=lambda: rst_ok)
 
 
-@router.post("/api/calibration/step3-load-charge", responses={403: {"description": "Authentification installateur requise"}})
+@router.post("/api/calibration/step3-load-charge")
 async def api_calibration_step3_load(
-    request: Request,
     payload: Annotated[CalibrationStep3Payload, Body()] = _CALIB_STEP3_DEFAULT,
 ):
     """Étape 3 : Verrouille le poids du sac étalon et lance l'acquisition en arrière-plan."""
-    require_installer_auth_if_configured(request)
     from src.calibration.calibration_service import build_sample_from_record, get_calibration_service
 
     calib_srv = get_calibration_service()
@@ -108,10 +102,9 @@ async def api_calibration_step3_load(
     )
 
 
-@router.post("/api/calibration/step5-apply", responses={403: {"description": "Authentification installateur requise"}})
-async def api_calibration_step5_apply(request: Request):
+@router.post("/api/calibration/step5-apply")
+async def api_calibration_step5_apply():
     """Étape 5 : Application en 1 clic des Offsets 70 et 71 dans l'EEPROM Micronova."""
-    require_installer_auth_if_configured(request)
     from src.calibration.calibration_service import get_calibration_service
     calib_srv = get_calibration_service()
     active_mode = get_active_mode()
@@ -145,10 +138,9 @@ async def api_calibration_step5_apply(request: Request):
     return res
 
 
-@router.post("/api/calibration/reset", responses={403: {"description": "Authentification installateur requise"}})
-async def api_calibration_reset(request: Request):
+@router.post("/api/calibration/reset")
+async def api_calibration_reset():
     """Réinitialise la calibration pour repartir de zéro si souhaité."""
-    require_installer_auth_if_configured(request)
     from src.calibration.calibration_service import get_calibration_service
     calib_srv = get_calibration_service()
     return calib_srv.reset_session()

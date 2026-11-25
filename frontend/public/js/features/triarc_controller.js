@@ -120,7 +120,7 @@ async function applyTriArcPendingChangesNow() {
     } else {
       showToast(`Application groupée de ${toSend.length} réglages...`);
       try {
-        await window.stoveProvider.sendCommandBatch(toSend, getInstallerHeaders());
+        await window.stoveProvider.sendCommandBatch(toSend);
         showToast(`${toSend.length} réglages appliqués avec succès !`);
       } catch (e) {
         showToast("Erreur : " + (e?.message || "Échec batch"), true);

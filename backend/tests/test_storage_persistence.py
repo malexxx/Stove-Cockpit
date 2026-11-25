@@ -9,7 +9,6 @@ import zipfile
 
 import config
 import database
-from services.installer_auth import clear_installer_sessions
 from services.storage_service import (
     create_backup_zip_bytes,
     inspect_storage_persistence,
@@ -243,7 +242,7 @@ class TestStoragePersistenceAndBackup(BugBountyTestCase):
             with self.assertRaises(ValueError):
                 restore_backup_zip_bytes(_make_zip([("nobis_a10_system.db", bad_schema_bytes, None)]), tmpdir)
 
-    def test_storage_and_backup_http_endpoints_and_installer_auth(self):
+    def test_storage_and_backup_http_endpoints(self):
         r_storage = self.client.get("/api/system/storage")
         self.assertEqual(r_storage.status_code, 200)
         st = r_storage.json()
@@ -257,27 +256,12 @@ class TestStoragePersistenceAndBackup(BugBountyTestCase):
         self.assertIn("storage_status", r_health.json())
         self.assertIn("storage_persistent", r_health.json())
 
-        clear_installer_sessions()
         with temporary_settings({"comm_mode": "simulation", "agua_password": "bkp-secret-pass"}):
-            # Sans jeton installateur -> 403
-            self.assertEqual(self.client.get("/api/system/backup").status_code, 403)
-            self.assertEqual(
-                self.client.post(
-                    "/api/system/backup/restore",
-                    content=b"PK",
-                    headers={"Content-Type": "application/zip"},
-                ).status_code,
-                403,
-            )
-
-            tok = self.client.post("/api/installer/verify", json={"password": "bkp-secret-pass"}).json()["token"]
-            headers = {"X-Installer-Token": tok}
-
             # Archive invalide -> 400
             r_bad = self.client.post(
                 "/api/system/backup/restore",
                 content=b"not-a-zip",
-                headers={**headers, "Content-Type": "application/zip"},
+                headers={"Content-Type": "application/zip"},
             )
             self.assertEqual(r_bad.status_code, 400)
 
@@ -306,7 +290,7 @@ class TestStoragePersistenceAndBackup(BugBountyTestCase):
                     finally:
                         sconn.close()
 
-                    r_dl = self.client.get("/api/system/backup", headers=headers)
+                    r_dl = self.client.get("/api/system/backup")
                     self.assertEqual(r_dl.status_code, 200)
                     self.assertEqual(r_dl.headers.get("content-type"), "application/zip")
                     self.assertIn("attachment; filename=", r_dl.headers.get("content-disposition", ""))
@@ -314,7 +298,7 @@ class TestStoragePersistenceAndBackup(BugBountyTestCase):
                     r_rst = self.client.post(
                         "/api/system/backup/restore",
                         content=r_dl.content,
-                        headers={**headers, "Content-Type": "application/zip"},
+                        headers={"Content-Type": "application/zip"},
                     )
                     self.assertEqual(r_rst.status_code, 200)
                     self.assertEqual(r_rst.json()["status"], "ok")

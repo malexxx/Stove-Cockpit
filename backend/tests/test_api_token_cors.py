@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 """Tests d'authentification par Jeton API (X-API-Key / Bearer), CORS Capacitor et endpoints appairage."""
-from services.api_token_service import get_or_create_api_token
-from services.installer_auth import clear_installer_sessions
+import os
+import socket
+from unittest.mock import patch
+
+from services.api_token_service import build_pairing_info, get_or_create_api_token
 from tests.helpers import BugBountyTestCase, temporary_settings
 
 
@@ -50,17 +53,14 @@ class TestApiTokenAndCors(BugBountyTestCase):
         self.assertIn("X-API-Key", r_opt.headers.get("access-control-allow-headers", ""))
 
     def test_pairing_info_and_token_rotation(self):
-        clear_installer_sessions()
         with temporary_settings({"comm_mode": "simulation", "agua_password": "pair-secret"}):
             info = self.client.get("/api/system/pairing-info").json()
             self.assertIn("api_token", info)
             self.assertIn("qr_payload", info)
             old_tok = info["api_token"]
 
-            # Rotation protégée par auth installateur
-            self.assertEqual(self.client.post("/api/system/pairing-token/rotate").status_code, 403)
-            inst_tok = self.client.post("/api/installer/verify", json={"password": "pair-secret"}).json()["token"]
-            rot = self.client.post("/api/system/pairing-token/rotate", headers={"X-Installer-Token": inst_tok})
+            # Rotation directe sans authentification installateur
+            rot = self.client.post("/api/system/pairing-token/rotate")
             self.assertEqual(rot.status_code, 200)
             new_tok = rot.json()["api_token"]
             self.assertNotEqual(old_tok, new_tok)
@@ -74,6 +74,33 @@ class TestApiTokenAndCors(BugBountyTestCase):
                 self.client.get("/api/latest", headers={"Origin": "capacitor://localhost", "X-API-Key": new_tok}).status_code,
                 200,
             )
+
+    def test_pairing_info_prefers_local_ip_over_dns(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("STOVE_LAN_IP", None)
+            os.environ.pop("HOST_LAN_IP", None)
+
+            # Nom DNS résolu en IP privée LAN -> préfère l'IP locale HTTP
+            with patch(
+                "services.api_token_service.socket.getaddrinfo",
+                return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.1.42", 0))],
+            ):
+                p_dns = build_pairing_info("https://mon-nas.local:8443")
+                self.assertEqual(p_dns["url"], "http://192.168.1.42:8443")
+
+            # localhost -> repli sur l'IP LAN détectée
+            with patch("services.api_token_service._detect_lan_ipv4", return_value="192.168.1.55"):
+                p_local = build_pairing_info("http://localhost:8080")
+                self.assertEqual(p_local["url"], "http://192.168.1.55:8080")
+
+            # IP locale directe conservée telle quelle
+            p_ip = build_pairing_info("http://192.168.1.50:8080")
+            self.assertEqual(p_ip["url"], "http://192.168.1.50:8080")
+
+            # STOVE_LAN_IP prioritaire
+            with patch.dict(os.environ, {"STOVE_LAN_IP": "10.0.0.25"}):
+                p_env = build_pairing_info("http://stove.home.arpa:8080")
+                self.assertEqual(p_env["url"], "http://10.0.0.25:8080")
 
     def test_cors_never_uses_wildcard_and_hardens_security_headers(self):
         # Origine tierce non autorisée sur OPTIONS -> pas de Access-Control-Allow-Origin: *

@@ -15,6 +15,7 @@ header {
 
 .card {
   background: linear-gradient(180deg, rgba(30, 41, 59, 0.45) 0%, rgba(17, 24, 39, 0.92) 100%);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   border: 1px solid #1f2937;
   border-radius: 0.75rem;
@@ -272,7 +273,6 @@ input[type="range"]::-webkit-slider-thumb {
     overflow-y: auto !important;
     scroll-snap-type: y mandatory !important;
     scroll-behavior: smooth !important;
-    -webkit-overflow-scrolling: touch !important;
     padding-bottom: 3.8rem !important;
   }
 
@@ -326,9 +326,13 @@ input[type="range"]::-webkit-slider-thumb {
   width: 100% !important;
   position: relative !important;
   touch-action: none !important;
-  user-select: none !important;
   -webkit-user-select: none !important;
+  user-select: none !important;
   overscroll-behavior: none !important;
+}
+
+.triarc-carousel-track {
+  transform: translateX(-100%);
 }
 
 #tab-control:not(.cockpit-alt-active) {
@@ -376,15 +380,15 @@ input[type="range"]::-webkit-slider-thumb {
 .cockpit-fader-track {
   touch-action: none;
   cursor: ns-resize;
-  user-select: none;
   -webkit-user-select: none;
+  user-select: none;
 }
 
 .cockpit-vernier-track {
   touch-action: none;
   cursor: ew-resize;
-  user-select: none;
   -webkit-user-select: none;
+  user-select: none;
 }
 
 /* ========================================================================== */

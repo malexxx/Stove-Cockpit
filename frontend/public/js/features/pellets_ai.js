@@ -19,7 +19,7 @@ function refillHopper(bagsAdded = 2) {
         ? { target_pct: targetPct, level_pct: targetPct, bags_added: 1 }
         : { target_pct: 100.0, level_pct: 100.0, bags_added: 2.33 };
       try {
-        const j = await window.stoveProvider.refillHopper(payload, getInstallerHeaders());
+        const j = await window.stoveProvider.refillHopper(payload);
         await refreshLatestOnly();
         const capKg = j.hopper_capacity_kg ?? HOPPER_CAPACITY_KG;
         const stockBags = j.pellet_bags_stock ?? j.bags_stock ?? "--";
@@ -411,7 +411,7 @@ function promptResetPelletBatch() {
     onConfirm: async (brandName) => {
       try {
         showToast("Remise à zéro de l'évaluation Mélange P/A en cours...");
-        await window.stoveProvider.pelletBatchRaz({ pellet_brand: brandName }, getInstallerHeaders());
+        await window.stoveProvider.pelletBatchRaz({ pellet_brand: brandName });
         await loadDashboard();
         showToast(`RAZ effectué pour « ${brandName} » : évaluation de 180 min démarrée !`);
       } catch (e) {

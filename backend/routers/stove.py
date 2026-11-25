@@ -4,9 +4,9 @@ Regroupe le réglage des températures/ventilations/puissances (/api/stove/set),
 les écritures directes de registres, le réapprovisionnement de la trémie et la gestion des lots de pellets.
 """
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated
 
-from fastapi import APIRouter, Body, HTTPException, Path, Request
+from fastapi import APIRouter, Body, HTTPException, Path
 
 from analytics import get_pellet_batch_state
 from config import PELLET_BAG_WEIGHT_KG, get_hopper_capacity_kg
@@ -18,7 +18,6 @@ from schemas import (
     RefillHopperPayload,
     StoveSetPayload,
 )
-from services.installer_auth import require_installer_auth_if_configured
 from telemetry import (
     _stove_io_lock,
     collect_telemetry_cycle,
@@ -33,31 +32,15 @@ _RAZ_DEFAULT = PelletBatchRazPayload()
 _AuditIdPath = Annotated[int, Path(ge=1, le=9223372036854775807)]
 
 
-def _is_raw_or_privileged_write(reg_key: str, offset: int | None, regs_catalog: dict[str, Any]) -> bool:
-    """Identifie les écritures d'offsets bruts ou hors catalogue réservées à l'installateur."""
-    rk = (reg_key or "").strip()
-    if rk == "raw_offset" or rk.upper().startswith("RAW_") or rk not in regs_catalog:
-        return True
-    if offset is not None and int(offset) != int(regs_catalog[rk].get("offset", offset)):
-        return True
-    return False
-
-
 @router.post("/command")
-async def api_command(payload: CommandPayload, request: Request):
+async def api_command(payload: CommandPayload):
     """Écriture unitaire d'un registre."""
-    regs = get_registers_dict(get_active_mode())
-    if _is_raw_or_privileged_write(payload.reg_key, payload.offset, regs):
-        require_installer_auth_if_configured(request)
     return await execute_register_write(payload.reg_key, payload.value, payload.offset)
 
 
 @router.post("/command-batch")
-async def api_command_batch(payload: BatchCommandPayload, request: Request):
+async def api_command_batch(payload: BatchCommandPayload):
     """Écriture groupée de plusieurs registres en une seule transaction."""
-    regs = get_registers_dict(get_active_mode())
-    if any(_is_raw_or_privileged_write(c.reg_key, c.offset, regs) for c in payload.commands):
-        require_installer_auth_if_configured(request)
     cmds = [{"reg_key": c.reg_key, "value": c.value, "offset": c.offset} for c in payload.commands]
     return await execute_registers_batch_write(cmds)
 
@@ -199,13 +182,11 @@ async def api_refill_hopper(payload: Annotated[RefillHopperPayload | None, Body(
     }
 
 
-@router.post("/pellet-batch/raz", responses={403: {"description": "Authentification installateur requise"}})
+@router.post("/pellet-batch/raz")
 async def api_pellet_batch_raz(
-    request: Request,
     payload: Annotated[PelletBatchRazPayload, Body()] = _RAZ_DEFAULT,
 ):
     """Réinitialise l'évaluation algorithmique lors d'un changement de marque de granulés."""
-    require_installer_auth_if_configured(request)
     brand = (payload.pellet_brand or "Nouveau Lot Certifié A1").strip() or "Nouveau Lot Certifié A1"
     return await reset_pellet_batch_calibration(brand)
 
@@ -242,13 +223,11 @@ async def api_sync_clock():
 @router.post(
     "/rollback/{audit_id}",
     responses={
-        403: {"description": "Authentification installateur requise"},
         404: {"description": "Entrée d'audit introuvable"},
     },
 )
-async def api_rollback(request: Request, audit_id: _AuditIdPath):
+async def api_rollback(audit_id: _AuditIdPath):
     """Restaure une valeur antérieure de registre depuis le journal d'audit."""
-    require_installer_auth_if_configured(request)
     active_mode = get_active_mode()
     conn = get_db(active_mode)
     try:

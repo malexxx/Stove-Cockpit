@@ -2,21 +2,6 @@
 // CORE UI — TOASTS, MODALES GÉNÉRIQUES, NAVIGATION, INDICATEURS & ERREURS CLIENT
 // =============================================================================
 
-let installerAuthToken = sessionStorage.getItem("nobis_installer_token") || "";
-
-/**
- * Construit les en-têtes HTTP incluant le jeton `X-Installer-Token` si la session expert est active.
- * @param {Record<string, string>} [extra={}] En-têtes supplémentaires à fusionner.
- * @returns {Record<string, string>} En-têtes HTTP prêts pour `fetch()`.
- */
-function getInstallerHeaders(extra = {}) {
-  const h = { ...extra };
-  if (installerAuthToken) {
-    h["X-Installer-Token"] = installerAuthToken;
-  }
-  return h;
-}
-
 function showToast(msg, isError = false) {
   const box = document.getElementById("toast-box");
   if (!box) return;
@@ -193,9 +178,8 @@ function switchTab(tabId) {
       if (typeof renderEepromTable === "function") renderEepromTable();
       _nobisTabDirty["tab-installer"] = false;
     }
-    checkInstallerAuthStatus();
     updateSettingsAccordionSummaries();
-    if (window.stoveProvider?.isContainerActive?.() && typeof loadPairingInfo === "function") {
+    if (window.stoveProvider?.isServedByContainer?.() && typeof loadPairingInfo === "function") {
       loadPairingInfo();
     }
     if (openSettingsAccId) {
@@ -228,7 +212,7 @@ function getFrontendVersionLabel() {
     window.stoveProvider?.getFrontendVersion?.() ||
     window.STOVE_FRONTEND_VERSION ||
     window.StoveCore?.frontendVersionTag ||
-    "v0.0.6"
+    "v0.0.7"
   );
 }
 
@@ -623,7 +607,7 @@ function updateStatusIndicatorAndAlerts() {
 async function reportClientError(source, message, severity = "ERROR") {
   try {
     if (window.stoveProvider && typeof window.stoveProvider.reportClientError === "function") {
-      await window.stoveProvider.reportClientError(severity, source, message, getInstallerHeaders());
+      await window.stoveProvider.reportClientError(severity, source, message);
     }
     const logsTab = document.getElementById("tab-logs");
     if (logsTab && !logsTab.classList.contains("hidden") && typeof loadLogs === "function") {

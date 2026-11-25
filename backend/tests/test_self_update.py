@@ -9,7 +9,6 @@ from unittest.mock import patch
 
 import config
 import database
-from services.installer_auth import clear_installer_sessions
 from services.update_bootstrap import (
     build_child_env,
     compare_versions,
@@ -308,7 +307,7 @@ class TestSelfUpdateSystem(BugBountyTestCase):
         mono_files = {
             "malexxx-Stove-Cockpit-abcdef1/backend/server.py": "def main():\n    pass\n",
             "malexxx-Stove-Cockpit-abcdef1/backend/main.py": "app = object()\n",
-            "malexxx-Stove-Cockpit-abcdef1/backend/config.py": 'APP_VERSION = "0.0.6"\n',
+            "malexxx-Stove-Cockpit-abcdef1/backend/config.py": 'APP_VERSION = "0.0.7"\n',
             "malexxx-Stove-Cockpit-abcdef1/backend/requirements.txt": req_txt,
             "malexxx-Stove-Cockpit-abcdef1/backend/routers/admin.py": "# router\n",
             "malexxx-Stove-Cockpit-abcdef1/backend/services/update_service.py": "# service\n",
@@ -332,7 +331,7 @@ class TestSelfUpdateSystem(BugBountyTestCase):
             _extract_tarball_safely(tar_path, stage_dir)
             _flatten_monorepo_stage_if_needed(stage_dir)
             meta = _validate_staged_release(stage_dir, config.BASE_DIR)
-            self.assertEqual(meta["app_version"], "0.0.6")
+            self.assertEqual(meta["app_version"], "0.0.7")
             self.assertTrue(os.path.isfile(os.path.join(stage_dir, "shared", "brands.json")))
             self.assertFalse(os.path.exists(os.path.join(stage_dir, "backend")))
             self.assertFalse(os.path.exists(os.path.join(stage_dir, "frontend")))
@@ -389,8 +388,7 @@ class TestSelfUpdateSystem(BugBountyTestCase):
                 database.reset_secret_key_cache()
                 database.reset_db_caches()
 
-    def test_update_http_endpoints_auth_validation_and_cache_busting(self):
-        clear_installer_sessions()
+    def test_update_http_endpoints_validation_and_cache_busting(self):
         with tempfile.TemporaryDirectory() as iso_dir:
             iso_sys = os.path.join(iso_dir, "nobis_a10_system.db")
             iso_modes = {
@@ -412,34 +410,22 @@ class TestSelfUpdateSystem(BugBountyTestCase):
                         self.assertEqual(r_stat.status_code, 200)
                         self.assertIn("channel", r_stat.json())
 
-                        self.assertEqual(self.client.post("/api/system/update/check").status_code, 403)
-                        self.assertEqual(self.client.post("/api/system/update/apply").status_code, 403)
-                        self.assertEqual(self.client.post("/api/system/update/rollback").status_code, 403)
                         self.assertEqual(
-                            self.client.post("/api/system/update/config", json={"channel": "v2"}).status_code,
-                            403,
-                        )
-
-                        tok = self.client.post("/api/installer/verify", json={"password": "upd-secret-pass"}).json()["token"]
-                        headers = {"X-Installer-Token": tok}
-
-                        self.assertEqual(
-                            self.client.post("/api/system/update/config", json={"channel": "evil"}, headers=headers).status_code,
+                            self.client.post("/api/system/update/config", json={"channel": "evil"}).status_code,
                             400,
                         )
                         self.assertEqual(
-                            self.client.post("/api/system/update/check", json={"channel": "evil"}, headers=headers).status_code,
+                            self.client.post("/api/system/update/check", json={"channel": "evil"}).status_code,
                             400,
                         )
                         self.assertEqual(
-                            self.client.post("/api/system/update/rollback", headers=headers).status_code,
+                            self.client.post("/api/system/update/rollback").status_code,
                             400,
                         )
 
                         r_cfg = self.client.post(
                             "/api/system/update/config",
                             json={"channel": "releases", "auto_check": False, "auto_apply": False},
-                            headers=headers,
                         )
                         self.assertEqual(r_cfg.status_code, 200)
                         self.assertEqual(r_cfg.json()["channel"], "releases")
@@ -488,8 +474,8 @@ class TestSelfUpdateSystem(BugBountyTestCase):
 
         with open(os.path.join(config.BASE_DIR, "Dockerfile"), encoding="utf-8") as fh:
             df = fh.read()
-        self.assertIn("ARG APP_VERSION=0.0.6", df)
-        self.assertIn("ARG DOCKER_VERSION=v0.0.6", df)
+        self.assertIn("ARG APP_VERSION=0.0.7", df)
+        self.assertIn("ARG DOCKER_VERSION=v0.0.7", df)
         self.assertIn("APP_VERSION=${APP_VERSION}", df)
         self.assertIn("DOCKER_VERSION=${DOCKER_VERSION}", df)
 
@@ -497,7 +483,7 @@ class TestSelfUpdateSystem(BugBountyTestCase):
             cfg_txt = fh.read()
         m_ver = _APP_VERSION_RE.search(cfg_txt)
         self.assertIsNotNone(m_ver)
-        self.assertEqual(m_ver.group(1), "0.0.6")
+        self.assertEqual(m_ver.group(1), "0.0.7")
 
         # Garde-fou anti-variable figée (ex: conteneur mis à jour ayant conservé APP_VERSION=2.2.0)
         with patch.dict(os.environ, {"APP_VERSION": "2.2.0", "DOCKER_VERSION": "2.2.0"}, clear=False):

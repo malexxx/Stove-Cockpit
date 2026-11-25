@@ -11,6 +11,9 @@ function applyModeVisibility() {
   document.querySelectorAll('[data-requires="container"]').forEach((el) => {
     el.classList.toggle("hidden", !isContainer);
   });
+  document.querySelectorAll('[data-requires="container-host"]').forEach((el) => {
+    el.classList.toggle("hidden", !servedByContainer);
+  });
   document.querySelectorAll('[data-requires="standalone-only"]').forEach((el) => {
     el.classList.toggle("hidden", isContainer);
   });
@@ -477,7 +480,9 @@ async function savePlusModeSettings() {
     try { if (typeof refreshMatterStatus === "function") refreshMatterStatus(false); } catch { }
     try { if (typeof loadStorageStatus === "function") loadStorageStatus(); } catch { }
     try { if (typeof loadUpdateStatus === "function") loadUpdateStatus(); } catch { }
-    loadPairingInfo();
+    if (window.stoveProvider.isServedByContainer()) {
+      loadPairingInfo();
+    }
   }
   showToast(`✅ Mode mis à jour : ${window.stoveProvider.getMode()}`);
 }
@@ -510,7 +515,7 @@ function refreshPairingQrFromInputs() {
 
 /** Charge les informations d'appairage mobile depuis le conteneur Mode « + ». */
 async function loadPairingInfo() {
-  if (!window.stoveProvider?.isContainerActive?.()) return;
+  if (!window.stoveProvider?.isServedByContainer?.()) return;
   try {
     const info = await window.stoveProvider.getPairingInfo();
     const urlEl = document.getElementById("pairing-url-hint");
@@ -531,10 +536,9 @@ async function loadPairingInfo() {
 
 /** Génère un QR Code temporaire (5 min) incluant un ticket AES-256-GCM pour transférer les identifiants Cloud. */
 async function generateCloudSyncPairingQr() {
-  if (!window.stoveProvider?.isContainerActive?.()) return;
-  const doGenerate = async () => {
-    const hdr = typeof getInstallerHeaders === "function" ? getInstallerHeaders() : {};
-    const res = await window.stoveProvider.createCloudSyncTicket(hdr);
+  if (!window.stoveProvider?.isServedByContainer?.()) return;
+  try {
+    const res = await window.stoveProvider.createCloudSyncTicket();
     const urlInput = document.getElementById("pairing-url-hint")?.value?.trim();
     const effectiveUrl = urlInput || res.url || window.location.origin;
     const token = res.api_token || document.getElementById("pairing-api-token")?.value?.trim() || "";
@@ -561,27 +565,16 @@ async function generateCloudSyncPairingQr() {
     updateBadge();
     pairingQrCountdownTimer = setInterval(updateBadge, 1000);
     showToast("🔐 QR Code avec transfert Cloud chiffré prêt (valable 5 min) !");
-  };
-
-  try {
-    await doGenerate();
   } catch (e) {
-    if (String(e?.message || "").includes("403") || String(e?.message || "").toLowerCase().includes("installateur")) {
-      if (typeof openInstallerUnlockModal === "function") {
-        openInstallerUnlockModal(doGenerate);
-        return;
-      }
-    }
     showToast("Erreur génération QR sécurisé : " + e.message, true);
   }
 }
 
-/** Régénère le jeton X-API-Key du conteneur compagnon (nécessite session Installateur). */
+/** Régénère le jeton X-API-Key du conteneur compagnon. */
 async function rotateContainerPairingToken() {
-  if (!window.stoveProvider?.isContainerActive?.()) return;
+  if (!window.stoveProvider?.isServedByContainer?.()) return;
   try {
-    const hdr = typeof getInstallerHeaders === "function" ? getInstallerHeaders() : {};
-    const res = await window.stoveProvider.rotatePairingToken(hdr);
+    const res = await window.stoveProvider.rotatePairingToken();
     const tokEl = document.getElementById("pairing-api-token");
     const newTok = res.api_token || res.container_api_token || "";
     if (tokEl && newTok) tokEl.value = newTok;
@@ -601,23 +594,6 @@ function _resolveSettingsContainerInputs() {
     token = window.stoveProvider?.prefs?.container_api_token || "";
   }
   return { url, token };
-}
-
-async function _obtainRemoteInstallerToken(url, apiToken) {
-  const pwd = window.prompt("Le conteneur est protégé. Saisissez le mot de passe Cloud / Installateur du conteneur :");
-  if (!pwd) return "";
-  const resp = await window.stoveProvider.container.request("/api/installer/verify", {
-    method: "POST",
-    baseUrlOverride: url,
-    tokenOverride: apiToken,
-    body: { password: pwd },
-  });
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({}));
-    throw new Error(err.detail || `Mot de passe refusé (HTTP ${resp.status})`);
-  }
-  const data = await resp.json();
-  return String(data?.token || "").trim();
 }
 
 async function _applyScannedPairingPayload(rawText, context) {
@@ -690,6 +666,8 @@ async function startPairingQrScan(context = "settings") {
   }
 
   try {
+    video.playsInline = true;
+    video.setAttribute("playsinline", "");
     qrScannerStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
     video.srcObject = qrScannerStream;
     await video.play();
@@ -782,35 +760,16 @@ async function syncCloudCredentialsToContainerUI() {
   }
   _setBoxStatus("cfg-cloud-sync-status", "🔐 Chiffrement AES-256-GCM et envoi Cloud & Météo vers le conteneur...", true);
   try {
-    const instTok = typeof installerSessionToken !== "undefined" ? installerSessionToken : "";
     await window.stoveProvider.pushCloudCredentialsToContainer({
       url,
       token,
       syncTicket: lastScannedSyncTicket,
-      installerToken: instTok,
     });
     lastScannedSyncTicket = "";
     _setBoxStatus("cfg-cloud-sync-status", "✅ Paramètres Cloud & Météo envoyés au conteneur !", true);
     if (typeof loadDashboard === "function") await loadDashboard();
     showToast("🔐 Cloud & Météo synchronisés vers le conteneur !");
   } catch (e) {
-    if (e?.status === 403) {
-      try {
-        const instTok = await _obtainRemoteInstallerToken(url, token);
-        if (!instTok) {
-          _setBoxStatus("cfg-cloud-sync-status", "Opération annulée.", false);
-          return;
-        }
-        await window.stoveProvider.pushCloudCredentialsToContainer({ url, token, installerToken: instTok });
-        _setBoxStatus("cfg-cloud-sync-status", "✅ Paramètres Cloud & Météo mis à jour sur le conteneur !", true);
-        if (typeof loadDashboard === "function") await loadDashboard();
-        showToast("🔐 Cloud & Météo synchronisés vers le conteneur !");
-        return;
-      } catch (e2) {
-        _setBoxStatus("cfg-cloud-sync-status", `❌ ${e2.message}`, false);
-        return;
-      }
-    }
     _setBoxStatus("cfg-cloud-sync-status", `❌ ${e.message}`, false);
   }
 }
@@ -823,12 +782,10 @@ async function syncCloudCredentialsFromContainerUI() {
   }
   _setBoxStatus("cfg-cloud-sync-status", "🔐 Récupération chiffrée Cloud & Météo depuis le conteneur...", true);
   try {
-    const instTok = typeof installerSessionToken !== "undefined" ? installerSessionToken : "";
     await window.stoveProvider.pullCloudCredentialsFromContainer({
       url,
       token,
       syncTicket: lastScannedSyncTicket,
-      installerToken: instTok,
     });
     lastScannedSyncTicket = "";
     _setBoxStatus("cfg-cloud-sync-status", "✅ Paramètres Cloud & Météo récupérés dans l'application !", true);
@@ -837,25 +794,6 @@ async function syncCloudCredentialsFromContainerUI() {
     if (typeof loadDashboard === "function") await loadDashboard();
     showToast("🔐 Cloud & Météo importés depuis le conteneur !");
   } catch (e) {
-    if (e?.status === 403) {
-      try {
-        const instTok = await _obtainRemoteInstallerToken(url, token);
-        if (!instTok) {
-          _setBoxStatus("cfg-cloud-sync-status", "Opération annulée.", false);
-          return;
-        }
-        await window.stoveProvider.pullCloudCredentialsFromContainer({ url, token, installerToken: instTok });
-        _setBoxStatus("cfg-cloud-sync-status", "✅ Paramètres Cloud & Météo récupérés dans l'application !", true);
-        _syncPrefsToSettingsDom();
-        if (typeof loadSettings === "function") await loadSettings();
-        if (typeof loadDashboard === "function") await loadDashboard();
-        showToast("🔐 Cloud & Météo importés depuis le conteneur !");
-        return;
-      } catch (e2) {
-        _setBoxStatus("cfg-cloud-sync-status", `❌ ${e2.message}`, false);
-        return;
-      }
-    }
     _setBoxStatus("cfg-cloud-sync-status", `❌ ${e.message}`, false);
   }
 }

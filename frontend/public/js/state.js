@@ -81,7 +81,6 @@ let activeHoverIdx = -1;
 let latestData = {};
 let registersCatalog = {};
 let currentSettings = {};
-let installerUnlocked = false;
 let cachedSeriesRows = [];
 let toastTimer = null;
 let actionModalCallback = null;

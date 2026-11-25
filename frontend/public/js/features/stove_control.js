@@ -66,7 +66,7 @@ async function sendCommand(reg_key, value, forceOverride = false) {
 
   showToast(`Envoi commande ${reg_key} = ${value}...`);
   try {
-    await window.stoveProvider.sendCommand(reg_key, Number(value), null, getInstallerHeaders());
+    await window.stoveProvider.sendCommand(reg_key, Number(value), null);
     showToast(`Commande ${reg_key} (${value}) appliquée avec succès !`);
   } catch (e) {
     const msg = e?.message || "Commande refusée";
@@ -363,7 +363,7 @@ async function sendRawOffset() {
   const offset = Number(offsetVal);
   const value = Number(valStr);
   try {
-    await window.stoveProvider.sendCommand(`RAW_${offset}`, value, offset, getInstallerHeaders());
+    await window.stoveProvider.sendCommand(`RAW_${offset}`, value, offset);
     showToast(`Offset brut #${offset} = ${value} écrit !`);
   } catch (e) {
     showToast("Erreur offset brut : " + (e?.message || "Échec"), true);

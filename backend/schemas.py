@@ -170,13 +170,6 @@ class ClientErrorPayload(BaseModel):
     message: StrictStr = Field(default="Erreur interface", description="Détail du message d'erreur")
 
 
-class InstallerVerifyPayload(BaseModel):
-    """Authentification du mode Expert / Installateur par mot de passe Agua Cloud."""
-
-    model_config = ConfigDict(extra="ignore")
-    password: str = Field(..., min_length=1, description="Mot de passe Agua Cloud pour déverrouillage installateur")
-
-
 class StoveSetPayload(BaseModel):
     """Consigne simplifiée de pilotage direct (puissance, température ou ventilation par zone)."""
 

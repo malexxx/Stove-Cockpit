@@ -334,7 +334,7 @@ async function applyProgramChanges(p, changes) {
     if (toSend.length === 1) {
       await sendCommand(toSend[0].reg_key, toSend[0].value);
     } else {
-      await window.stoveProvider.sendCommandBatch(toSend, getInstallerHeaders());
+      await window.stoveProvider.sendCommandBatch(toSend);
       showToast(`Programme ${p} mis à jour avec succès (${toSend.length} réglages) !`);
       await refreshLatestOnly();
     }

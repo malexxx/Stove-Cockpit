@@ -3,19 +3,10 @@ let currentStep = 1;
 let pollTimer = null;
 let statusPollInFlight = false;
 
-function getWizardInstallerHeaders(extra = {}) {
-  const headers = { ...extra };
-  const token = sessionStorage.getItem("nobis_installer_token") || "";
-  if (token) {
-    headers["X-Installer-Token"] = token;
-  }
-  return headers;
-}
-
 async function wizardPostJson(url, bodyObj = null) {
   const opts = {
     method: "POST",
-    headers: getWizardInstallerHeaders(bodyObj !== null ? { "Content-Type": "application/json" } : {}),
+    headers: bodyObj !== null ? { "Content-Type": "application/json" } : {},
   };
   if (bodyObj !== null) {
     opts.body = JSON.stringify(bodyObj);
@@ -26,9 +17,6 @@ async function wizardPostJson(url, bodyObj = null) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const detail = data.detail || data.message || `Erreur HTTP ${res.status}`;
-    if (res.status === 403) {
-      throw new Error(`${detail} (Déverrouillez d'abord le mode Expert dans Paramètres & Logs du Cockpit).`);
-    }
     throw new Error(detail);
   }
   return data;

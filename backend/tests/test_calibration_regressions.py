@@ -12,7 +12,6 @@ from src.calibration.calibration_service import (
 from src.calibration.nobis_calibration import CalibrationState
 from tests.helpers import (
     BugBountyTestCase,
-    get_installer_auth_headers,
     make_calibration_result as _make_calibration_result,
     temporary_settings,
 )
@@ -37,17 +36,16 @@ class TestCalibrationRegressions(BugBountyTestCase):
                 sconn.close()
 
             try:
-                headers = get_installer_auth_headers(self.client)
                 with patch("routers.calibration.execute_register_write", new_callable=AsyncMock) as mock_write:
                     mock_write.return_value = {"status": "ok"}
 
-                    r1 = self.client.post("/api/calibration/step1-start", json={"mode": "COMBINED_BOTH"}, headers=headers)
+                    r1 = self.client.post("/api/calibration/step1-start", json={"mode": "COMBINED_BOTH"})
                     self.assertEqual(r1.status_code, 200)
                     mock_write.assert_awaited_with("fun_pwf_set", 0.0, 33154, skip_poll=True)
 
                     mock_write.reset_mock()
                     srv.engine.state = CalibrationState.WAITING_INITIAL_AL03
-                    r2 = self.client.post("/api/calibration/step2-confirm-al03", headers=headers)
+                    r2 = self.client.post("/api/calibration/step2-confirm-al03")
                     self.assertEqual(r2.status_code, 200)
                     mock_write.assert_awaited_once_with("status_code", 170.0, 232, skip_poll=True)
                     for call in mock_write.await_args_list:
@@ -108,7 +106,6 @@ class TestCalibrationRegressions(BugBountyTestCase):
         with temporary_settings({"comm_mode": "simulation", CALIBRATION_SETTINGS_KEY: None}):
             srv.reset_session()
             try:
-                headers = get_installer_auth_headers(self.client)
                 srv.engine.state = CalibrationState.COMPLETED_LOCKED
                 srv.engine.result = _make_calibration_result(off70=2, off71=-1)
 
@@ -123,7 +120,7 @@ class TestCalibrationRegressions(BugBountyTestCase):
                     ),
                 ):
                     mock_batch.return_value = {"status": "ok"}
-                    r_ok = self.client.post("/api/calibration/step5-apply", headers=headers)
+                    r_ok = self.client.post("/api/calibration/step5-apply")
                     self.assertEqual(r_ok.status_code, 200)
                     body_ok = r_ok.json()
                     self.assertTrue(body_ok["success"])
@@ -141,7 +138,7 @@ class TestCalibrationRegressions(BugBountyTestCase):
                     ),
                 ):
                     mock_batch.return_value = {"status": "ok"}
-                    r_mismatch = self.client.post("/api/calibration/step5-apply", headers=headers)
+                    r_mismatch = self.client.post("/api/calibration/step5-apply")
                     self.assertEqual(r_mismatch.status_code, 200)
                     body_mismatch = r_mismatch.json()
                     self.assertFalse(body_mismatch["success"])
@@ -159,7 +156,7 @@ class TestCalibrationRegressions(BugBountyTestCase):
                         ),
                     ):
                         mock_batch.return_value = {"status": "ok"}
-                        r_cloud = self.client.post("/api/calibration/step5-apply", headers=headers)
+                        r_cloud = self.client.post("/api/calibration/step5-apply")
                         self.assertEqual(r_cloud.status_code, 200)
                         body_cloud = r_cloud.json()
                         self.assertTrue(body_cloud["success"])

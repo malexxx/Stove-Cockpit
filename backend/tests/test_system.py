@@ -44,16 +44,8 @@ class TestSystemEndpoints(unittest.TestCase):
 
     def test_snapshots_lifecycle_and_exports(self):
         """Vérifie la création, consultation, export CSV, restauration et suppression de snapshots."""
-        from database import get_settings_dict
-        pwd = (get_settings_dict().get("agua_password") or "").strip()
-        auth_headers = {}
-        if pwd:
-            r_auth = self.client.post("/api/installer/verify", json={"password": pwd})
-            self.assertEqual(r_auth.status_code, 200)
-            auth_headers = {"X-Installer-Token": r_auth.json().get("token", "")}
-
         # 1. Création d'un snapshot avec nom
-        resp_create = self.client.post("/api/snapshots", json={"name": "Snapshot Test Unitaire", "refresh_live": False}, headers=auth_headers)
+        resp_create = self.client.post("/api/snapshots", json={"name": "Snapshot Test Unitaire", "refresh_live": False})
         self.assertEqual(resp_create.status_code, 200)
         data_create = resp_create.json()
         self.assertEqual(data_create["status"], "ok")
@@ -61,7 +53,7 @@ class TestSystemEndpoints(unittest.TestCase):
         snap_id = data_create["id"]
 
         # Création d'un snapshot sans nom (génération automatique de libellé)
-        resp_create_auto = self.client.post("/api/snapshots", json={"refresh_live": False}, headers=auth_headers)
+        resp_create_auto = self.client.post("/api/snapshots", json={"refresh_live": False})
         self.assertEqual(resp_create_auto.status_code, 200)
         snap_auto_id = resp_create_auto.json()["id"]
 
@@ -89,18 +81,18 @@ class TestSystemEndpoints(unittest.TestCase):
             self.assertEqual(resp_csv_404.status_code, 404)
 
             # 4. Restauration du snapshot
-            resp_restore = self.client.post(f"/api/snapshots/{snap_id}/restore", headers=auth_headers)
+            resp_restore = self.client.post(f"/api/snapshots/{snap_id}/restore")
             self.assertEqual(resp_restore.status_code, 200)
             self.assertEqual(resp_restore.json()["status"], "ok")
 
             # Restauration d'un snapshot introuvable -> 404
-            resp_restore_404 = self.client.post("/api/snapshots/99999999/restore", headers=auth_headers)
+            resp_restore_404 = self.client.post("/api/snapshots/99999999/restore")
             self.assertEqual(resp_restore_404.status_code, 404)
         finally:
             # 5. Suppression des snapshots créés
-            resp_del1 = self.client.delete(f"/api/snapshots/{snap_id}", headers=auth_headers)
+            resp_del1 = self.client.delete(f"/api/snapshots/{snap_id}")
             self.assertEqual(resp_del1.status_code, 200)
-            resp_del2 = self.client.delete(f"/api/snapshots/{snap_auto_id}", headers=auth_headers)
+            resp_del2 = self.client.delete(f"/api/snapshots/{snap_auto_id}")
             self.assertEqual(resp_del2.status_code, 200)
 
     def test_audit_and_logs(self):
@@ -186,11 +178,8 @@ class TestSystemEndpoints(unittest.TestCase):
 
     def test_test_connection_simulation(self):
         """Vérifie le endpoint /api/test-connection en mode simulation."""
-        from tests.helpers import get_installer_auth_headers
-
-        headers = get_installer_auth_headers(self.client)
         payload = {"comm_mode": "simulation"}
-        resp = self.client.post("/api/test-connection", json=payload, headers=headers)
+        resp = self.client.post("/api/test-connection", json=payload)
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["status"], "ok")
@@ -200,30 +189,24 @@ class TestSystemEndpoints(unittest.TestCase):
 
     def test_test_connection_local_gateway_mocked(self):
         """Vérifie le test de connexion passerelle UART (succès et échec)."""
-        from tests.helpers import get_installer_auth_headers
-
-        headers = get_installer_auth_headers(self.client)
         payload = {"comm_mode": "local_gateway", "local_gateway_url": "http://192.168.1.150"}
 
         # Cas succès
         with patch("clients.local_gateway_client.test_connection", new_callable=AsyncMock) as mock_test:
             mock_test.return_value = {"status": "ok", "latency_ms": 12}
-            resp = self.client.post("/api/test-connection", json=payload, headers=headers)
+            resp = self.client.post("/api/test-connection", json=payload)
             self.assertEqual(resp.status_code, 200)
             self.assertEqual(resp.json()["status"], "ok")
 
         # Cas échec (diagnostic renvoie status: error sans crash 5xx)
         with patch("clients.local_gateway_client.test_connection", new_callable=AsyncMock) as mock_test:
             mock_test.side_effect = Exception("Hôte passerelle UART injoignable")
-            resp = self.client.post("/api/test-connection", json=payload, headers=headers)
+            resp = self.client.post("/api/test-connection", json=payload)
             self.assertEqual(resp.status_code, 200)
             self.assertEqual(resp.json()["status"], "error")
 
     def test_test_connection_agua_cloud_mocked(self):
         """Vérifie le test de connexion Cloud Agua IOT (succès et échec) sur client isolé."""
-        from tests.helpers import get_installer_auth_headers
-
-        headers = get_installer_auth_headers(self.client)
         payload = {
             "comm_mode": "agua_cloud",
             "agua_email": "test@example.com",
@@ -234,28 +217,25 @@ class TestSystemEndpoints(unittest.TestCase):
         # Cas succès
         with patch("clients.AguaCloudClient.login_and_discover", new_callable=AsyncMock) as mock_login:
             mock_login.return_value = {"token": "fake_tok", "id_device": "dev1"}
-            resp = self.client.post("/api/test-connection", json=payload, headers=headers)
+            resp = self.client.post("/api/test-connection", json=payload)
             self.assertEqual(resp.status_code, 200)
             self.assertEqual(resp.json()["status"], "ok")
 
         # Cas échec (diagnostic renvoie status: error sans crash 5xx)
         with patch("clients.AguaCloudClient.login_and_discover", new_callable=AsyncMock) as mock_login:
             mock_login.side_effect = Exception("Identifiants Agua IOT rejetés")
-            resp = self.client.post("/api/test-connection", json=payload, headers=headers)
+            resp = self.client.post("/api/test-connection", json=payload)
             self.assertEqual(resp.status_code, 200)
             self.assertEqual(resp.json()["status"], "error")
 
     def test_agua_registers_map_endpoint_mocked(self):
         """Vérifie le endpoint /api/agua-registers-map."""
-        from tests.helpers import get_installer_auth_headers
-
-        headers = get_installer_auth_headers(self.client)
         with patch("clients.agua_client.scan_registers_map", new_callable=AsyncMock) as mock_scan, \
              patch("clients.agua_client.read_buffer", new_callable=AsyncMock) as mock_read:
             mock_scan.return_value = [{"offset": 103, "formula": "val", "label": "Temp amb"}]
             mock_read.return_value = {103: 19.5, 2: 150.0}
 
-            resp = self.client.get("/api/agua-registers-map", headers=headers)
+            resp = self.client.get("/api/agua-registers-map")
             self.assertEqual(resp.status_code, 200)
             data = resp.json()
             self.assertIn("registers_map", data)
@@ -282,17 +262,9 @@ class TestSystemEndpoints(unittest.TestCase):
         """Vérifie les endpoints /api/system/restart et /api/system/check-update."""
         from contextlib import asynccontextmanager
         import httpx
-        from database import get_settings_dict
-
-        pwd = (get_settings_dict().get("agua_password") or "").strip()
-        auth_headers = {}
-        if pwd:
-            r_auth = self.client.post("/api/installer/verify", json={"password": pwd})
-            self.assertEqual(r_auth.status_code, 200)
-            auth_headers = {"X-Installer-Token": r_auth.json().get("token", "")}
 
         with patch("routers.system._delayed_process_restart", new_callable=AsyncMock) as mock_restart:
-            resp_restart = self.client.post("/api/system/restart", headers=auth_headers)
+            resp_restart = self.client.post("/api/system/restart")
             self.assertEqual(resp_restart.status_code, 200)
             self.assertEqual(resp_restart.json()["status"], "ok")
             mock_restart.assert_called_once()
@@ -312,7 +284,7 @@ class TestSystemEndpoints(unittest.TestCase):
 
         with patch.dict("os.environ", {"WATCHTOWER_URL": "http://watchtower:8080/v1/update"}):
             with patch("routers.system.borrow_http_client", _borrow_ok):
-                resp_upd = self.client.post("/api/system/check-update", headers=auth_headers)
+                resp_upd = self.client.post("/api/system/check-update")
                 self.assertEqual(resp_upd.status_code, 200)
                 self.assertEqual(resp_upd.json()["status"], "ok")
 
@@ -325,7 +297,7 @@ class TestSystemEndpoints(unittest.TestCase):
                 yield _FakeClientErr()
 
             with patch("routers.system.borrow_http_client", _borrow_err):
-                resp_err = self.client.post("/api/system/check-update", headers=auth_headers)
+                resp_err = self.client.post("/api/system/check-update")
                 self.assertEqual(resp_err.status_code, 502)
 
 

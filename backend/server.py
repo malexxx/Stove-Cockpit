@@ -27,7 +27,7 @@ from services.update_bootstrap import (
     rollback_after_boot_failure,
 )
 
-IMAGE_CODE_VERSION = "0.0.6"
+IMAGE_CODE_VERSION = "0.0.7"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("nobis.server")

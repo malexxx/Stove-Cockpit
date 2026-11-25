@@ -178,7 +178,7 @@ def _apply_security_headers(request: Request, response: Response) -> None:
     cors_origin = _resolve_cors_allow_origin(request, verify_api_token(token) if token else False)
     if cors_origin:
         response.headers["Access-Control-Allow-Origin"] = cors_origin
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-API-Key, X-Installer-Token"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-API-Key"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
         response.headers["Vary"] = "Origin"
 
@@ -198,7 +198,7 @@ def _build_options_response(app: FastAPI, request: Request) -> Response | None:
     headers = {
         "Allow": allow_str,
         "Access-Control-Allow-Methods": allow_str,
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key, X-Installer-Token",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key",
         "Access-Control-Max-Age": "600",
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "SAMEORIGIN",

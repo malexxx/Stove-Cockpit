@@ -227,15 +227,12 @@ class TestStoveCommandsAndConfigurations(unittest.TestCase):
 
     def test_10_pellet_batch_raz(self):
         """Test RAZ d'un lot de granulés."""
-        from tests.helpers import get_installer_auth_headers
-
-        headers = get_installer_auth_headers(self.client)
         # Modifier d'abord les trims
         self.client.post("/api/command", json={"reg_key": "trim_pellet_pct", "value": 2.0, "offset": 70})
         self.client.post("/api/command", json={"reg_key": "trim_exhaust_pct", "value": -2.0, "offset": 71})
 
         # Exécuter RAZ
-        resp = self.client.post("/api/pellet-batch/raz", json={"pellet_brand": "Total Pellets Premium"}, headers=headers)
+        resp = self.client.post("/api/pellet-batch/raz", json={"pellet_brand": "Total Pellets Premium"})
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["status"], "ok")
@@ -287,9 +284,6 @@ class TestStoveCommandsAndConfigurations(unittest.TestCase):
 
     def test_13_rollback(self):
         """Test annulation (rollback) d'une consigne."""
-        from tests.helpers import get_installer_auth_headers
-
-        headers = get_installer_auth_headers(self.client)
         self.client.post("/api/command", json={"reg_key": "temp_amb_setpoint", "value": 25.0, "offset": 33122})
 
         conn = get_db("simulation")
@@ -303,7 +297,7 @@ class TestStoveCommandsAndConfigurations(unittest.TestCase):
         finally:
             conn.close()
 
-        r_rb = self.client.post(f"/api/rollback/{audit_id}", headers=headers)
+        r_rb = self.client.post(f"/api/rollback/{audit_id}")
         self.assertEqual(r_rb.status_code, 200)
 
         regs = self.client.get("/api/latest").json()["registers"]
