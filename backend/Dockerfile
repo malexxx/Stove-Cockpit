@@ -19,13 +19,13 @@ FROM python:3.12-slim-trixie
 
 LABEL org.opencontainers.image.title="Stove Cockpit Server" \
     org.opencontainers.image.description="Supervision 24/7, historique SQLite et passerelle Matter locale pour poêles Micronova (HTTP pur)" \
-    org.opencontainers.image.version="0.0.7" \
+    org.opencontainers.image.version="0.0.8" \
     org.opencontainers.image.licenses="MIT" \
     org.opencontainers.image.source="https://github.com/malexxx/Stove-Cockpit" \
     org.opencontainers.image.vendor="Stove Cockpit"
 
-ARG APP_VERSION=0.0.7
-ARG DOCKER_VERSION=v0.0.7
+ARG APP_VERSION=0.0.8
+ARG DOCKER_VERSION=v0.0.8
 ARG GIT_COMMIT=""
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -40,7 +40,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     tzdata \
     tini \
-    gosu \
+    util-linux \
     ca-certificates \
     && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
     && echo $TZ > /etc/timezone \
@@ -51,7 +51,7 @@ COPY --from=node-builder /usr/local/bin/node /usr/local/bin/node
 WORKDIR /app
 
 COPY backend/requirements.txt .
-RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
+RUN python -m pip install --no-cache-dir --upgrade pip "setuptools>=84.1.0" wheel \
     && pip install --no-cache-dir -r requirements.txt
 
 COPY shared/ /app/shared/

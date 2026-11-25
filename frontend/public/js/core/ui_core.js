@@ -212,7 +212,7 @@ function getFrontendVersionLabel() {
     window.stoveProvider?.getFrontendVersion?.() ||
     window.STOVE_FRONTEND_VERSION ||
     window.StoveCore?.frontendVersionTag ||
-    "v0.0.7"
+    "v0.0.8"
   );
 }
 

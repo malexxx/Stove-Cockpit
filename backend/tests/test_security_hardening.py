@@ -178,10 +178,12 @@ class TestSecurityHardening(BugBountyTestCase):
         self.assertIn('VOLUME ["/app/data"]', dockerfile)
         self.assertIn("FROM node:26-trixie-slim AS node-builder", dockerfile)
         self.assertIn("FROM python:3.12-slim-trixie", dockerfile)
+        self.assertIn('"setuptools>=84.1.0"', dockerfile)
         self.assertIn('org.opencontainers.image.licenses="MIT"', dockerfile)
         self.assertIn('org.opencontainers.image.source="https://github.com/malexxx/Stove-Cockpit"', dockerfile)
         self.assertIn("tini", dockerfile)
-        self.assertIn("gosu", dockerfile)
+        self.assertIn("util-linux", dockerfile)
+        self.assertNotIn("gosu", dockerfile)
         self.assertIn("urllib.request", dockerfile)
         self.assertNotIn("curl", dockerfile)
         self.assertNotIn("acme.sh", dockerfile)
@@ -191,7 +193,7 @@ class TestSecurityHardening(BugBountyTestCase):
         self.assertTrue(os.path.isfile(entrypoint_path))
         with open(entrypoint_path, encoding="utf-8") as f:
             entrypoint = f.read()
-        self.assertIn('exec gosu nobis:nobis "$@"', entrypoint)
+        self.assertIn("exec setpriv --reuid=nobis --regid=nobis --init-groups --", entrypoint)
 
         repo_root = os.path.dirname(BASE_DIR)
         wf_pub = os.path.join(repo_root, ".github", "workflows", "docker-publish.yml")

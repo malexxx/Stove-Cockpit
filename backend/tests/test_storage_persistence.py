@@ -58,7 +58,7 @@ class TestStoragePersistenceAndBackup(BugBountyTestCase):
         with open(os.path.join(config.BASE_DIR, "docker-entrypoint.sh"), encoding="utf-8") as fh:
             entrypoint = fh.read()
         self.assertIn("resolve_data_dir", entrypoint)
-        self.assertIn('exec gosu nobis:nobis "$@"', entrypoint)
+        self.assertIn("exec setpriv --reuid=nobis --regid=nobis --init-groups --", entrypoint)
 
     def test_inspect_storage_persistence_mountinfo_classification(self):
         with tempfile.TemporaryDirectory() as tmpdir:

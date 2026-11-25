@@ -22,7 +22,7 @@ if [ "$(id -u)" = "0" ]; then
     if [ "$TARGET_DATA_DIR" != "/app/data" ]; then
         chown -R nobis:nobis "$TARGET_DATA_DIR"
     fi
-    exec gosu nobis:nobis "$@"
+    exec setpriv --reuid=nobis --regid=nobis --init-groups -- "$@"
 fi
 
 exec "$@"
