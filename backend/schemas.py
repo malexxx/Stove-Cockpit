@@ -104,6 +104,7 @@ class SettingsPayload(BaseModel):
     matter_port: NoBoolIntOrStr = None
     duct_left_name: StrictStr | None = None
     duct_right_name: StrictStr | None = None
+    cockpit_ui_mode: StrictStr | None = None
 
 
 class TestConnectionPayload(BaseModel):

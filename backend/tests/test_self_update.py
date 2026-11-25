@@ -488,8 +488,8 @@ class TestSelfUpdateSystem(BugBountyTestCase):
 
         with open(os.path.join(config.BASE_DIR, "Dockerfile"), encoding="utf-8") as fh:
             df = fh.read()
-        self.assertIn("ARG APP_VERSION=0.0.4", df)
-        self.assertIn("ARG DOCKER_VERSION=v0.0.4", df)
+        self.assertIn("ARG APP_VERSION=0.0.5", df)
+        self.assertIn("ARG DOCKER_VERSION=v0.0.5", df)
         self.assertIn("APP_VERSION=${APP_VERSION}", df)
         self.assertIn("DOCKER_VERSION=${DOCKER_VERSION}", df)
 
@@ -497,7 +497,7 @@ class TestSelfUpdateSystem(BugBountyTestCase):
             cfg_txt = fh.read()
         m_ver = _APP_VERSION_RE.search(cfg_txt)
         self.assertIsNotNone(m_ver)
-        self.assertEqual(m_ver.group(1), "0.0.4")
+        self.assertEqual(m_ver.group(1), "0.0.5")
 
         # Garde-fou anti-variable figée (ex: conteneur mis à jour ayant conservé APP_VERSION=2.2.0)
         with patch.dict(os.environ, {"APP_VERSION": "2.2.0", "DOCKER_VERSION": "2.2.0"}, clear=False):

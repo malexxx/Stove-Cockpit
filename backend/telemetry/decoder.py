@@ -206,12 +206,16 @@ def _persist_catalog_from_buffer(
     regs: dict[str, dict[str, Any]],
     raw_buf: dict[int, float],
     now_str: str,
+    decoded_overrides: dict[str, float] | None = None,
 ) -> None:
     conn = get_db(comm_mode)
+    overrides = decoded_overrides or {}
     try:
         for rk, meta in regs.items():
             off = int(meta["offset"])
-            val_to_store = raw_buf.get(off)
+            val_to_store = overrides.get(rk)
+            if val_to_store is None:
+                val_to_store = raw_buf.get(off)
             if val_to_store is None and rk == "temp_ambient" and 1 in raw_buf:
                 val_to_store = raw_buf[1]
             if val_to_store is not None:
@@ -334,7 +338,12 @@ def decode_hardware_buffer(
     p_cmd = int(round(float(_dyn("power_level", raw_buf.get(33120, r_val.get("power_level", 4))))))
     p_actual = int(round(float(_dyn("real_power", raw_buf.get(11, p_cmd)))))
     sb_fallback = r_val.get("standby_set", 0) if comm_mode == "simulation" else 0
-    standby_en = 1 if (state in (8, 9)) else int(round(float(_dyn("standby_set", raw_buf.get(33130, sb_fallback)))))
+    raw_sb = _dyn("standby_get", _dyn("standby_set", raw_buf.get(33130)))
+    standby_en = 1 if (state in (8, 9)) else (
+        (1 if int(round(float(raw_sb))) > 0 else 0)
+        if raw_sb is not None
+        else (1 if int(round(float(sb_fallback))) > 0 else 0)
+    )
 
     t_flags = int(raw_buf.get(22, 0))
     stove_clock_str = format_stove_clock(
@@ -375,7 +384,46 @@ def decode_hardware_buffer(
     prev_state = int(prev.get("status_code") if prev.get("status_code") is not None else state)
     ignitions = int(prev.get("ignitions_count") or 612) + (1 if state in (2, 3, 4, 5) and prev_state in (0, 8, 9) else 0)
 
-    _persist_catalog_from_buffer(comm_mode, regs, raw_buf, now_str)
+    auto_fallback = r_val.get("fun_auto_set", 0) if comm_mode == "simulation" else 0
+    raw_auto = _dyn("fun_auto_get", _dyn("fun_auto_set", raw_buf.get(33128)))
+    fun_auto_val = (
+        (1 if int(round(float(raw_auto))) > 0 else 0)
+        if raw_auto is not None
+        else (1 if int(round(float(auto_fallback))) > 0 else 0)
+    )
+    pwf_fallback = r_val.get("fun_pwf_set", 0) if comm_mode == "simulation" else 0
+    raw_pwf = _dyn("fun_pwf_get", _dyn("fun_pwf_set", raw_buf.get(33154)))
+    pwf_val = (
+        max(0, int(round(float(raw_pwf))))
+        if raw_pwf is not None
+        else max(0, int(round(float(pwf_fallback))))
+    )
+    fan_front_spd = int(round(float(_dyn("fan_front_speed", raw_buf.get(33132, r_val.get("fan_front_speed", 3))))))
+    dl_sp = float(_dyn("duct_left_setpoint", raw_buf.get(33126, r_val.get("duct_left_setpoint", 20.0))))
+    dl_spd = int(round(float(_dyn("duct_left_speed", raw_buf.get(33136, r_val.get("duct_left_speed", 0))))))
+    dr_sp = float(_dyn("duct_right_setpoint", raw_buf.get(33124, r_val.get("duct_right_setpoint", 20.0))))
+    dr_spd = int(round(float(_dyn("duct_right_speed", raw_buf.get(33134, r_val.get("duct_right_speed", 0))))))
+    chrono_fields = extract_chrono_fields(r_val, raw_buf)
+
+    _persist_catalog_from_buffer(
+        comm_mode,
+        regs,
+        raw_buf,
+        now_str,
+        decoded_overrides={
+            "fun_auto_set": float(fun_auto_val),
+            "standby_set": float(standby_en),
+            "power_level": float(p_cmd),
+            "temp_amb_setpoint": float(temp_amb_sp),
+            "duct_left_setpoint": dl_sp,
+            "duct_right_setpoint": dr_sp,
+            "fan_front_speed": float(fan_front_spd),
+            "duct_left_speed": float(dl_spd),
+            "duct_right_speed": float(dr_spd),
+            "fun_pwf_set": float(pwf_val),
+            "chrono_week_enable_set": float(chrono_fields["chrono_week_enable"]),
+        },
+    )
 
     return {
         "timestamp": now_str,
@@ -406,19 +454,19 @@ def decode_hardware_buffer(
         "glow_plug_on": 1 if state in (2, 3, 4) else 0,
         "power_level": p_cmd,
         "power_actual": p_actual,
-        "fun_auto_set": int(round(float(_dyn("fun_auto_set", raw_buf.get(33128, r_val.get("fun_auto_set", 1)))))),
+        "fun_auto_set": fun_auto_val,
         "standby_enabled": standby_en,
-        "fun_pwf_set": int(round(float(_dyn("fun_pwf_set", raw_buf.get(33154, r_val.get("fun_pwf_set", 0)))))),
+        "fun_pwf_set": pwf_val,
         "set_silece_set": _is_app_silence_active(settings),
-        "fan_front_speed": int(round(float(_dyn("fan_front_speed", raw_buf.get(33132, r_val.get("fan_front_speed", 3)))))),
+        "fan_front_speed": fan_front_spd,
         "vent_front_actual": int(round(float(_dyn("vent_front_actual", raw_buf.get(16, 0))))),
         "duct_left_temp": float(_dyn("duct_left_temp", round(float(raw_buf.get(29, 0.0)) / 2.0, 1))),
-        "duct_left_setpoint": float(_dyn("duct_left_setpoint", raw_buf.get(33126, r_val.get("duct_left_setpoint", 20.0)))),
-        "duct_left_speed": int(round(float(_dyn("duct_left_speed", raw_buf.get(33136, r_val.get("duct_left_speed", 0)))))),
+        "duct_left_setpoint": dl_sp,
+        "duct_left_speed": dl_spd,
         "duct_left_actual": int(round(float(_dyn("duct_left_actual", raw_buf.get(32, 0))))),
         "duct_right_temp": float(_dyn("duct_right_temp", round(float(raw_buf.get(28, 0.0)) / 2.0, 1))),
-        "duct_right_setpoint": float(_dyn("duct_right_setpoint", raw_buf.get(33124, r_val.get("duct_right_setpoint", 20.0)))),
-        "duct_right_speed": int(round(float(_dyn("duct_right_speed", raw_buf.get(33134, r_val.get("duct_right_speed", 0)))))),
+        "duct_right_setpoint": dr_sp,
+        "duct_right_speed": dr_spd,
         "duct_right_actual": int(round(float(_dyn("duct_right_actual", raw_buf.get(31, 0))))),
         "thermostat_flags": t_flags,
         "thermostat_main": 1 if (t_flags & 128) else 0,
@@ -426,7 +474,7 @@ def decode_hardware_buffer(
         "thermostat_sx": 1 if (t_flags & 16) else 0,
         "enable_mask_105": int(raw_buf.get(105, 18479)),
         "enable_mask_107": int(raw_buf.get(107, 2)),
-        **extract_chrono_fields(r_val, raw_buf),
+        **chrono_fields,
         "stove_clock_str": stove_clock_str,
         "auger_on_time_s": None,
         "auger_cycle_s": None,

@@ -5,6 +5,7 @@ import { evaluateMicronovaFormula } from "./formula_eval.js";
 const READING_ERROR_VALUE = Number(schema.reading_error_value ?? 32768);
 const CANONICAL_ALIASES = schema.canonical_key_aliases || {};
 const STATUS_OFF_KEYWORDS = new Set((schema.status_off_keywords || []).map((s) => s.toUpperCase()));
+const STATUS_IDLE_KEYWORDS = new Set((schema.status_idle_keywords || []).map((s) => s.toUpperCase()));
 const CANALIZATION_REGEXES = (schema.canalization_patterns || []).map((p) => new RegExp(p));
 
 export function parseRegistersMap(rawMapJson) {
@@ -209,6 +210,7 @@ export function detectCapabilities(registerMap, evaluated = {}, settings = {}) {
       has_auto: true,
       has_boost: true,
       has_eco: true,
+      can_write_eco: false,
       has_chrono: true,
       has_pellet_level_sensor: false,
       has_flue_temp: true,
@@ -246,6 +248,18 @@ export function detectCapabilities(registerMap, evaluated = {}, settings = {}) {
   const [fanK, fanMeta] = resolveCanonical("fan_front_speed", evaluated, registerMap);
   const ducts = detectDucts(registerMap, evaluated);
   const brandId = String(settings?.brand_id || settings?.agua_brand || "").toLowerCase();
+  const isNobis =
+    brandId === "nobis" || ("canalization_sx_set" in registerMap && "canalization_dx_set" in registerMap && powerMax === 7);
+  const canWriteEco = Boolean(resolveCanonical("standby_set", evaluated, registerMap)[0]);
+  const [, statusMeta] = resolveCanonical("status_get", evaluated, registerMap);
+  const statusOpts = statusMeta ? getEncValOptions(statusMeta) : {};
+  const hasIdlePhase = Object.values(statusOpts).some((desc) => {
+    const up = String(desc || "").toUpperCase();
+    for (const kw of STATUS_IDLE_KEYWORDS) {
+      if (up.includes(kw)) return true;
+    }
+    return false;
+  });
 
   return {
     stove_type: stoveType,
@@ -259,9 +273,16 @@ export function detectCapabilities(registerMap, evaluated = {}, settings = {}) {
     fan_min: Number(fanMeta?.set_min ?? 0),
     fan_max: Number(fanMeta?.set_max ?? 8),
     ducts,
-    has_auto: Boolean(resolveCanonical("fun_auto_set", evaluated, registerMap)[0]),
-    has_boost: Boolean(resolveCanonical("fun_pwf_set", evaluated, registerMap)[0]),
-    has_eco: Boolean(resolveCanonical("standby_set", evaluated, registerMap)[0]),
+    has_auto: Boolean(
+      resolveCanonical("fun_auto_set", evaluated, registerMap)[0]
+      || resolveCanonical("fun_auto_get", evaluated, registerMap)[0]
+    ),
+    has_boost: Boolean(
+      resolveCanonical("fun_pwf_set", evaluated, registerMap)[0]
+      || resolveCanonical("fun_pwf_get", evaluated, registerMap)[0]
+    ),
+    has_eco: Boolean(canWriteEco || resolveCanonical("standby_get", evaluated, registerMap)[0] || isNobis || hasIdlePhase),
+    can_write_eco: canWriteEco,
     has_chrono: Boolean(resolveCanonical("chrono_week_enable_set", evaluated, registerMap)[0]),
     has_pellet_level_sensor: Boolean(resolveCanonical("pellet_level_pct", evaluated, registerMap)[0]),
     has_flue_temp: Boolean(resolveCanonical("temp_fumes", evaluated, registerMap)[0]),
@@ -269,8 +290,7 @@ export function detectCapabilities(registerMap, evaluated = {}, settings = {}) {
     has_pressure_pa: Boolean(resolveCanonical("depression_pa", evaluated, registerMap)[0]),
     has_exhaust_rpm: Boolean(resolveCanonical("exhaust_rpm", evaluated, registerMap)[0]),
     has_water_pressure: Boolean(resolveCanonical("water_pressure_bar", evaluated, registerMap)[0]),
-    is_nobis_a10_profile:
-      brandId === "nobis" || ("canalization_sx_set" in registerMap && "canalization_dx_set" in registerMap && powerMax === 7),
+    is_nobis_a10_profile: isNobis,
   };
 }
 
@@ -388,6 +408,19 @@ export function decodeBufferToTelemetry(rawBuf, registerMap, settings = {}, weat
     chrono[`chrono_p${idx}_temp`] = Number(rawBuf[baseOff + 8] ?? dTemp);
   }
 
+  const rawAuto = dyn("fun_auto_get", dyn("fun_auto_set", rawBuf[33128]));
+  const funAutoVal = rawAuto !== undefined && rawAuto !== null
+    ? (Math.round(Number(rawAuto)) > 0 ? 1 : 0)
+    : 0;
+  const rawPwf = dyn("fun_pwf_get", dyn("fun_pwf_set", rawBuf[33154]));
+  const funPwfVal = rawPwf !== undefined && rawPwf !== null
+    ? Math.max(0, Math.round(Number(rawPwf)))
+    : 0;
+  const rawSb = dyn("standby_get", dyn("standby_set", rawBuf[33130]));
+  const standbyVal = statusCode === 8 || statusCode === 9
+    ? 1
+    : (rawSb !== undefined && rawSb !== null ? (Math.round(Number(rawSb)) > 0 ? 1 : 0) : 0);
+
   const latest = {
     timestamp: now.toISOString().slice(0, 19).replace("T", " "),
     epoch: Math.floor(now.getTime() / 1000),
@@ -414,9 +447,9 @@ export function decodeBufferToTelemetry(rawBuf, registerMap, settings = {}, weat
     depression_pa: Number(dyn("depression_pa", Math.round(Number(rawBuf[37] ?? 0) / 10 * 10) / 10)),
     power_level: pCmd,
     power_actual: pActual,
-    fun_auto_set: Math.round(Number(dyn("fun_auto_set", rawBuf[33128] ?? 1))),
-    standby_enabled: statusCode === 8 || statusCode === 9 ? 1 : Math.round(Number(dyn("standby_set", rawBuf[33130] ?? 0))),
-    fun_pwf_set: Math.round(Number(dyn("fun_pwf_set", rawBuf[33154] ?? 0))),
+    fun_auto_set: funAutoVal,
+    standby_enabled: standbyVal,
+    fun_pwf_set: funPwfVal,
     set_silece_set: 0,
     fan_front_speed: Math.round(Number(dyn("fan_front_speed", rawBuf[33132] ?? 3))),
     vent_front_actual: Math.round(Number(dyn("vent_front_actual", rawBuf[16] ?? 0))),

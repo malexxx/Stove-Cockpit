@@ -431,7 +431,7 @@ export class AguaDirectProvider {
         if (off === 70 || off === 71 || rk === "trim_pellet_pct" || rk === "trim_exhaust_pct") {
           continue;
         }
-        if (off === 33130 || rk === "standby_set") {
+        if ((off === 33130 || rk === "standby_set") && !dynMeta) {
           continue;
         }
         itemsSpec.push({ offset: off, value: val, regKey: rk });

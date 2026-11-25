@@ -631,7 +631,7 @@ function renderBooleanRibbons() {
 
   // Valeurs par défaut (dernier point)
   const last = cachedSeriesRows[cachedSeriesRows.length - 1] || {};
-  document.getElementById("ribbon-val-auto").textContent = Number(last.fun_auto_set ?? 1) ? "ON" : "OFF";
+  document.getElementById("ribbon-val-auto").textContent = Number(last.fun_auto_set ?? 0) ? "ON" : "OFF";
   const climValEl = document.getElementById("ribbon-val-clim");
   const lastSt = Number(last.status_code ?? 0);
   if (climValEl) climValEl.textContent = (lastSt === 8 || lastSt === 9 || Number(last.standby_enabled ?? 0)) ? "ON" : "OFF";

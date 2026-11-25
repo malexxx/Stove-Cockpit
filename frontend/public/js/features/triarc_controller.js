@@ -18,8 +18,9 @@ const TRIARC_REG_META = {
   duct_right_speed: { label: "🌀 Ventilation Soufflerie DX", fmt: (v) => fmtTriArcFan(v) },
   power_level: { label: "🔥 Puissance de combustion", fmt: (v) => `P${v}` },
   fun_pwf_set: { label: "🚀 Mode Boost (Puissance)", fmt: (v) => (Number(v) === 1 ? "🚀 ON" : (Number(v) === 2 ? "⏱️ PROG" : "OFF")) },
-  fun_auto_set: { label: "🔥+🌀 Mode Automatique", fmt: (v) => (Number(v) === 1 ? "ACTIF" : "OFF") },
-  standby_set: { label: "💤 Mode Éco (Stand-by)", fmt: (v) => (Number(v) === 1 ? "ACTIF" : "OFF") }
+  fun_auto_set: { label: "🔥 Modulation Auto (Puissance)", fmt: (v) => (Number(v) === 1 ? "ACTIF" : "OFF") },
+  standby_set: { label: "💤 Mode Éco (Stand-by)", fmt: (v) => (Number(v) === 1 ? "ACTIF" : "OFF") },
+  chrono_week_enable_set: { label: "⏱️ Chrono Hebdomadaire", fmt: (v) => (Number(v) === 1 ? "ON" : "OFF") }
 };
 
 function setTriArcOptimistic(key, val, durationMs = 30000) {
@@ -41,9 +42,9 @@ function getTriArcLiveOrOpt(key, fallbackVal) {
 }
 
 function getTriArcRawBaseline(reg_key) {
-  if (reg_key === "fun_pwf_set") return Number(getRegVal("fun_pwf_set", latestData.fun_pwf_set ?? 0));
-  if (reg_key === "fun_auto_set") return Number(getRegVal("fun_auto_set", latestData.fun_auto_set ?? 0));
-  if (reg_key === "standby_set") return Number(getRegVal("standby_set", latestData.standby_set ?? 0));
+  if (reg_key === "fun_pwf_set") return Number(latestData.fun_pwf_set ?? getRegVal("fun_pwf_set", 0));
+  if (reg_key === "fun_auto_set") return Number(latestData.fun_auto_set ?? getRegVal("fun_auto_set", 0));
+  if (reg_key === "standby_set") return Number(latestData.standby_enabled ?? getRegVal("standby_set", 0));
   if (reg_key === "power_level") return Number(getRegVal("power_level", latestData.power_level ?? 4));
   return Number(getRegVal(reg_key, 0));
 }
@@ -80,12 +81,68 @@ function queueTriArcChanges(changesList) {
     triArcBatchTimer = null;
   }
 
-  if (Object.keys(triArcPendingChanges).length > 0) {
+  const isAltMode = typeof getActiveCockpitUiMode === "function" && getActiveCockpitUiMode() !== "triarc";
+  if (!isAltMode && Object.keys(triArcPendingChanges).length > 0) {
     triArcBatchTimer = setTimeout(() => {
       triArcBatchTimer = null;
       promptTriArcBatchValidation();
     }, 1000);
   }
+}
+
+async function applyTriArcPendingChangesNow() {
+  if (triArcBatchTimer) {
+    clearTimeout(triArcBatchTimer);
+    triArcBatchTimer = null;
+  }
+  const toSend = Object.values(triArcPendingChanges).map(it => ({
+    reg_key: it.reg_key,
+    value: Number(it.newVal)
+  }));
+  triArcPendingChanges = {};
+  if (toSend.length === 0) {
+    renderTriArcCockpit();
+    return;
+  }
+
+  const keysToClear = toSend.map(c => c.reg_key);
+  toSend.forEach(c => setTriArcOptimistic(c.reg_key, c.value, 6000));
+  renderTriArcCockpit();
+
+  try {
+    if (window.stoveProvider?.isContainerActive?.() && silenceModeState && silenceModeState.active && toSend.some(c => SILENCE_OVERRIDABLE_KEYS[c.reg_key])) {
+      await deactivateSilenceMode(toSend);
+      return;
+    }
+
+    if (toSend.length === 1) {
+      await sendCommand(toSend[0].reg_key, toSend[0].value);
+    } else {
+      showToast(`Application groupée de ${toSend.length} réglages...`);
+      try {
+        await window.stoveProvider.sendCommandBatch(toSend, getInstallerHeaders());
+        showToast(`${toSend.length} réglages appliqués avec succès !`);
+      } catch (e) {
+        showToast("Erreur : " + (e?.message || "Échec batch"), true);
+      }
+      await refreshLatestOnly();
+    }
+  } finally {
+    clearTriArcOptimistic(keysToClear);
+    renderTriArcCockpit();
+  }
+}
+
+function cancelTriArcPendingChanges() {
+  if (triArcBatchTimer) {
+    clearTimeout(triArcBatchTimer);
+    triArcBatchTimer = null;
+  }
+  const keys = Object.keys(triArcPendingChanges);
+  triArcPendingChanges = {};
+  clearTriArcOptimistic(keys);
+  renderTriArcCockpit();
+  showToast("Modifications annulées.");
 }
 
 function promptTriArcBatchValidation() {
@@ -119,41 +176,8 @@ function promptTriArcBatchValidation() {
     htmlContent,
     confirmText: "Valider et Appliquer",
     cancelText: "Annuler",
-    onConfirm: async () => {
-      const toSend = Object.values(triArcPendingChanges).map(it => ({
-        reg_key: it.reg_key,
-        value: Number(it.newVal)
-      }));
-      triArcPendingChanges = {};
-      if (toSend.length === 0) return;
-
-      toSend.forEach(c => setTriArcOptimistic(c.reg_key, c.value, 6000));
-
-      if (window.stoveProvider?.isContainerActive?.() && silenceModeState && silenceModeState.active && toSend.some(c => SILENCE_OVERRIDABLE_KEYS[c.reg_key])) {
-        await deactivateSilenceMode(toSend);
-        return;
-      }
-
-      if (toSend.length === 1) {
-        await sendCommand(toSend[0].reg_key, toSend[0].value);
-      } else {
-        showToast(`Application groupée de ${toSend.length} réglages...`);
-        try {
-          await window.stoveProvider.sendCommandBatch(toSend, getInstallerHeaders());
-          showToast(`${toSend.length} réglages appliqués avec succès !`);
-        } catch (e) {
-          showToast("Erreur : " + (e?.message || "Échec batch"), true);
-        }
-        await refreshLatestOnly();
-      }
-    },
-    onCancel: () => {
-      const keys = Object.keys(triArcPendingChanges);
-      triArcPendingChanges = {};
-      clearTriArcOptimistic(keys);
-      renderTriArcCockpit();
-      showToast("Modifications annulées.");
-    }
+    onConfirm: applyTriArcPendingChangesNow,
+    onCancel: cancelTriArcPendingChanges
   });
 }
 
@@ -173,18 +197,15 @@ function closeTriArcOptionBubble() {
 }
 
 function toggleTriArcOptionBubble(modeName) {
-  if (modeName === "silence" && !window.stoveProvider?.isContainerActive?.()) {
-    triArcExpandedMode = null;
-    renderTriArcCockpit();
-    return;
-  }
   triArcExpandedMode = (triArcExpandedMode === modeName) ? null : modeName;
   renderTriArcCockpit();
 }
 
 function setTriArcEcoOption(val) {
   closeTriArcOptionBubble();
-  if (getActiveCommMode() === "agua_cloud") {
+  const caps = typeof getActiveCapabilities === "function" ? getActiveCapabilities() : {};
+  const isDemoMode = window.stoveProvider?.getMode?.() === "demo";
+  if (getActiveCommMode() === "agua_cloud" && !caps.can_write_eco && !isDemoMode) {
     showToast("Le Cloud Agua IOT ne permet pas de modifier Comfort Clima à distance. Utilisez la radiocommande Nobis (MENU ▸ UTILISATEUR ▸ COMFORT CLIMA).", "warning");
     return;
   }
@@ -193,31 +214,42 @@ function setTriArcEcoOption(val) {
 
 function setTriArcAutoOption(idx) {
   closeTriArcOptionBubble();
-  if (idx === 0) {
-    // Désactivation complète du mode Auto : fun_auto_set = 0 et réinitialisation des vitesses de ventilateurs si elles étaient en Auto (8)
-    const changes = [{ reg_key: "fun_auto_set", value: 0 }];
-    const curFanAmb = Number(getTriArcLiveOrOpt("fan_front_speed", getRegVal("fan_front_speed", 3)));
-    const curFanSx = Number(getTriArcLiveOrOpt("duct_left_speed", getRegVal("duct_left_speed", 0)));
-    const curFanDx = Number(getTriArcLiveOrOpt("duct_right_speed", getRegVal("duct_right_speed", 0)));
-    if (curFanAmb >= 8) changes.push({ reg_key: "fan_front_speed", value: 3 });
-    if (curFanSx >= 8) changes.push({ reg_key: "duct_left_speed", value: 0 });
-    if (curFanDx >= 8) changes.push({ reg_key: "duct_right_speed", value: 0 });
-    queueTriArcChanges(changes);
-  } else if (idx === 1) {
-    queueTriArcChanges([
-      { reg_key: "fun_auto_set", value: 0 },
-      { reg_key: "fan_front_speed", value: 8 },
-      { reg_key: "duct_left_speed", value: 8 },
-      { reg_key: "duct_right_speed", value: 8 }
-    ]);
-  } else if (idx === 2) {
-    queueTriArcChanges([
-      { reg_key: "fun_auto_set", value: 1 },
-      { reg_key: "fan_front_speed", value: 8 },
-      { reg_key: "duct_left_speed", value: 8 },
-      { reg_key: "duct_right_speed", value: 8 }
-    ]);
+  const caps = typeof getActiveCapabilities === "function" ? getActiveCapabilities() : { has_auto: true, has_fan_front: true, fan_max: 8, ducts: [{ id: "SX", speed_max: 8 }, { id: "DX", speed_max: 8 }] };
+  const hasAuto = caps.has_auto !== false;
+  const hasFanFront = caps.has_fan_front !== false && Number(caps.fan_max ?? 8) >= 8;
+  const ducts = Array.isArray(caps.ducts) ? caps.ducts : [];
+  const hasSx = ducts.some(d => d.id === "SX" && Number(d.speed_max ?? 8) >= 8);
+  const hasDx = ducts.some(d => d.id === "DX" && Number(d.speed_max ?? 8) >= 8);
+
+  const curFanAmb = Number(getTriArcLiveOrOpt("fan_front_speed", getRegVal("fan_front_speed", 3)));
+  const curFanSx = Number(getTriArcLiveOrOpt("duct_left_speed", getRegVal("duct_left_speed", 0)));
+  const curFanDx = Number(getTriArcLiveOrOpt("duct_right_speed", getRegVal("duct_right_speed", 0)));
+  const changes = [];
+
+  if (idx === 0 || idx === 3) {
+    // 0 = OFF complet, 3 = Flamme Auto seule (fun_auto_set = 1, ventilation manuelle)
+    if (hasAuto) {
+      changes.push({ reg_key: "fun_auto_set", value: idx === 3 ? 1 : 0 });
+    }
+    if (hasFanFront && curFanAmb >= 8) changes.push({ reg_key: "fan_front_speed", value: 3 });
+    if (hasSx && curFanSx >= 8) changes.push({ reg_key: "duct_left_speed", value: 0 });
+    if (hasDx && curFanDx >= 8) changes.push({ reg_key: "duct_right_speed", value: 0 });
+  } else if (idx === 1 || idx === 2) {
+    // 1 = Ventil Auto seule, 2 = Auto Total (Flamme + Ventil Auto)
+    if (hasAuto) {
+      changes.push({ reg_key: "fun_auto_set", value: idx === 2 ? 1 : 0 });
+    }
+    if (triArcZone === "SX") {
+      if (hasSx) changes.push({ reg_key: "duct_left_speed", value: 8 });
+    } else if (triArcZone === "DX") {
+      if (hasDx) changes.push({ reg_key: "duct_right_speed", value: 8 });
+    } else {
+      if (hasFanFront) changes.push({ reg_key: "fan_front_speed", value: 8 });
+      if (hasSx && curFanSx > 0) changes.push({ reg_key: "duct_left_speed", value: 8 });
+      if (hasDx && curFanDx > 0) changes.push({ reg_key: "duct_right_speed", value: 8 });
+    }
   }
+  queueTriArcChanges(changes);
 }
 
 async function setTriArcBoostOption(val) {
@@ -242,6 +274,44 @@ async function setTriArcSilenceHours(hours) {
   }
 }
 
+function activateStandaloneSilence() {
+  closeTriArcOptionBubble();
+  const caps = typeof getActiveCapabilities === "function" ? getActiveCapabilities() : {
+    temp_min: 7, has_auto: true, has_boost: true, has_chrono: true, has_fan_front: true, fan_max: 8,
+    ducts: [{ id: "SX", speed_max: 8 }, { id: "DX", speed_max: 8 }],
+  };
+  const tMin = Number(caps.temp_min ?? 7);
+  const ducts = Array.isArray(caps.ducts) ? caps.ducts : [];
+  const hasSx = ducts.some(d => d.id === "SX");
+  const hasDx = ducts.some(d => d.id === "DX");
+  const hasSxAuto = ducts.some(d => d.id === "SX" && Number(d.speed_max ?? 8) >= 8);
+  const hasDxAuto = ducts.some(d => d.id === "DX" && Number(d.speed_max ?? 8) >= 8);
+  const hasFanFrontAuto = caps.has_fan_front !== false && Number(caps.fan_max ?? 8) >= 8;
+  const st = Number(latestData.status_code ?? 0);
+  const changes = [];
+
+  if (st !== 0) {
+    if (caps.has_boost !== false) changes.push({ reg_key: "fun_pwf_set", value: 0 });
+    if (caps.has_chrono !== false) changes.push({ reg_key: "chrono_week_enable_set", value: 0 });
+    if (caps.has_auto !== false) changes.push({ reg_key: "fun_auto_set", value: 1 });
+    if (hasFanFrontAuto) changes.push({ reg_key: "fan_front_speed", value: 8 });
+    const curFanSx = Number(getTriArcLiveOrOpt("duct_left_speed", getRegVal("duct_left_speed", 0)));
+    const curFanDx = Number(getTriArcLiveOrOpt("duct_right_speed", getRegVal("duct_right_speed", 0)));
+    if (hasSxAuto && curFanSx > 0) changes.push({ reg_key: "duct_left_speed", value: 8 });
+    if (hasDxAuto && curFanDx > 0) changes.push({ reg_key: "duct_right_speed", value: 8 });
+  }
+  changes.push({ reg_key: "temp_amb_setpoint", value: tMin });
+  if (hasSx) changes.push({ reg_key: "duct_left_setpoint", value: tMin });
+  if (hasDx) changes.push({ reg_key: "duct_right_setpoint", value: tMin });
+
+  const hasDiff = changes.some(c => Number(c.value) !== getTriArcRawBaseline(c.reg_key));
+  if (!hasDiff) {
+    showToast("Le poêle est déjà en mode Silence.");
+    return;
+  }
+  queueTriArcChanges(changes);
+}
+
 function updateTriArcValueFromPoint(svgEl, arcType, clientX, clientY) {
   const rect = svgEl.getBoundingClientRect();
   const x = 14 + (clientX - rect.left) * (292 / rect.width);
@@ -263,8 +333,8 @@ function updateTriArcValueFromPoint(svgEl, arcType, clientX, clientY) {
     const caps = typeof getActiveCapabilities === "function" ? getActiveCapabilities() : { has_fan_front: true, fan_max: 8 };
     if (zone === "AMB" && caps.has_fan_front === false) return null;
     const fanMax = Math.max(1, Number(caps.fan_max ?? 8));
-    // Sur le TriArc principal (AMB), si la ventilation est en mode Auto, l'arc est verrouillé (géré par le bouton Auto)
-    const isFanAuto = (zone === "AMB") && (T.autoIdx === 1 || T.autoIdx === 2 || fanSp === 8);
+    // Sur le TriArc principal (AMB), si la ventilation est en mode Auto (8), l'arc est verrouillé
+    const isFanAuto = (zone === "AMB") && fanMax >= 8 && Number(fanSp) >= 8;
     if (isFanAuto) return null;
 
     let a = deg < 0 ? deg + 360 : deg;
@@ -274,8 +344,8 @@ function updateTriArcValueFromPoint(svgEl, arcType, clientX, clientY) {
     const caps = typeof getActiveCapabilities === "function" ? getActiveCapabilities() : { power_min: 1, power_max: 7, has_boost: true };
     const pwrMax = Math.max(1, Number(caps.power_max ?? 7));
     const pwrArcMax = caps.has_boost ? pwrMax + 1 : pwrMax;
-    // Si la puissance est en mode Auto complet (2) ou s'il s'agit d'un écran canalisation, l'arc n'est pas cliquable
-    if (zone === "SX" || zone === "DX" || T.autoIdx === 2) return null;
+    // Si la puissance est en mode Auto ou s'il s'agit d'un écran canalisation, l'arc n'est pas cliquable
+    if (zone === "SX" || zone === "DX" || Number(T.autoPwr) === 1) return null;
 
     let a = Math.max(-38, Math.min(38, deg));
     const rawVal = Math.round(((38 - a) / 76) * pwrArcMax);
@@ -304,7 +374,7 @@ function commitTriArcDrag(dragState) {
       showToast("P0 (Éco) est un ralenti automatique enclenché lorsque la température atteint la consigne.");
     } else {
       const changes = [{ reg_key: "power_level", value: v }];
-      const pwfCur = Number(getTriArcLiveOrOpt("fun_pwf_set", getRegVal("fun_pwf_set", latestData.fun_pwf_set ?? 0)));
+      const pwfCur = Number(getTriArcLiveOrOpt("fun_pwf_set", latestData.fun_pwf_set ?? getRegVal("fun_pwf_set", 0)));
       if (pwfCur > 0) {
         changes.unshift({ reg_key: "fun_pwf_set", value: 0 });
       }

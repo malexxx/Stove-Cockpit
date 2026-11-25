@@ -288,6 +288,7 @@ def detect_capabilities(
             "has_auto": True,
             "has_boost": True,
             "has_eco": True,
+            "can_write_eco": (settings or {}).get("comm_mode", "agua_cloud") in ("simulation", "local_gateway"),
             "has_chrono": True,
             "has_pellet_level_sensor": False,
             "has_flue_temp": True,
@@ -329,13 +330,30 @@ def detect_capabilities(
     fan_max = int((fan_meta or {}).get("set_max") if (fan_meta or {}).get("set_max") is not None else 8)
 
     ducts = _detect_ducts(register_map, ev)
-    has_auto = resolve_canonical("fun_auto_set", ev, register_map)[0] is not None
-    has_boost = resolve_canonical("fun_pwf_set", ev, register_map)[0] is not None
-    has_eco = resolve_canonical("standby_set", ev, register_map)[0] is not None
-    has_chrono = resolve_canonical("chrono_week_enable_set", ev, register_map)[0] is not None
-
+    has_auto = (
+        resolve_canonical("fun_auto_set", ev, register_map)[0] is not None
+        or resolve_canonical("fun_auto_get", ev, register_map)[0] is not None
+    )
+    has_boost = (
+        resolve_canonical("fun_pwf_set", ev, register_map)[0] is not None
+        or resolve_canonical("fun_pwf_get", ev, register_map)[0] is not None
+    )
     brand_id = str((settings or {}).get("agua_brand") or "").strip().lower()
     is_nobis = brand_id == "nobis" or ("canalization_sx_set" in register_map and "canalization_dx_set" in register_map and power_max == 7)
+    can_write_eco = resolve_canonical("standby_set", ev, register_map)[0] is not None
+    _, status_meta = resolve_canonical("status_get", ev, register_map)
+    status_opts = get_enc_val_options(status_meta) if status_meta else {}
+    has_idle_phase = any(
+        any(kw in desc.upper() for kw in STATUS_IDLE_KEYWORDS)
+        for desc in status_opts.values()
+    )
+    has_eco = (
+        can_write_eco
+        or (resolve_canonical("standby_get", ev, register_map)[0] is not None)
+        or is_nobis
+        or has_idle_phase
+    )
+    has_chrono = resolve_canonical("chrono_week_enable_set", ev, register_map)[0] is not None
 
     return {
         "stove_type": stove_type,
@@ -352,6 +370,7 @@ def detect_capabilities(
         "has_auto": has_auto,
         "has_boost": has_boost,
         "has_eco": has_eco,
+        "can_write_eco": can_write_eco,
         "has_chrono": has_chrono,
         "has_pellet_level_sensor": resolve_canonical("pellet_level_pct", ev, register_map)[0] is not None,
         "has_flue_temp": resolve_canonical("temp_fumes", ev, register_map)[0] is not None,

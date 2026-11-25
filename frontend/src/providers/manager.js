@@ -138,7 +138,7 @@ export class ProviderManager {
       App.addListener("appStateChange", async ({ isActive }) => {
         if (isActive && this.onStateCallback) {
           await this.resolveActiveMode();
-          await this.pollNow().catch(() => {});
+          await this.pollNow().catch(() => { });
         }
       });
     } catch {
@@ -150,7 +150,7 @@ export class ProviderManager {
           const prevMode = this.mode;
           await this.resolveActiveMode();
           if (prevMode !== this.mode && this.onStateCallback) {
-            await this.pollNow().catch(() => {});
+            await this.pollNow().catch(() => { });
           }
         }
       });
@@ -211,7 +211,7 @@ export class ProviderManager {
 
   async _mirrorContainerSettingsToLocalPrefs(remoteSettings) {
     if (!remoteSettings || typeof remoteSettings !== "object" || this.servedByContainer) return;
-    const sharedKeys = ["weather_city", "weather_lat", "weather_lon", "duct_left_name", "duct_right_name", "hopper_capacity_kg"];
+    const sharedKeys = ["weather_city", "weather_lat", "weather_lon", "duct_left_name", "duct_right_name", "hopper_capacity_kg", "cockpit_ui_mode"];
     const patch = {};
     for (const k of sharedKeys) {
       const val = remoteSettings[k];
@@ -303,7 +303,7 @@ export class ProviderManager {
       return this.demo.applyCommands(commands);
     }
     const res = await this.agua.writeRegistersBatch(this.prefs, commands);
-    await this.pollNow(true).catch(() => {});
+    await this.pollNow(true).catch(() => { });
     return res;
   }
 
@@ -496,7 +496,7 @@ export class ProviderManager {
     const intervalMs = Math.max(15000, Number(this.prefs.poll_interval_s || 60) * 1000);
     this.pollTimer = setInterval(() => {
       if (typeof document !== "undefined" && document.hidden) return;
-      this.getLatest().then((d) => onState(d)).catch(() => {});
+      this.getLatest().then((d) => onState(d)).catch(() => { });
     }, intervalMs);
   }
 

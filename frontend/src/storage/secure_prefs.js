@@ -28,6 +28,7 @@ const DEFAULTS = {
   weather_lon: "2.3522",
   duct_left_name: "SX",
   duct_right_name: "DX",
+  cockpit_ui_mode: "triarc",
   demo_profile: "nobis_2ducts",
 };
 

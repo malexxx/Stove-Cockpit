@@ -82,6 +82,92 @@ describe("Micronova register engine (parité backend)", () => {
     expect(latest.status_code).toBe(5);
     expect(latest.temp_ambient).toBe(21);
     expect(latest.weather_temp_ext).toBe(9.5);
+    expect(latest.fun_auto_set).toBe(0);
     expect(capabilities.ducts.length).toBe(2);
+  });
+
+  it("decodeBufferToTelemetry reflète l'état réel de fun_auto_set et priorise fun_auto_get", () => {
+    const rmapAbsent = parseRegistersMap(sampleAir2Ducts);
+    const resAbsent = decodeBufferToTelemetry({ 8: 5, 103: 20 }, rmapAbsent, { agua_brand: "nobis" });
+    expect(resAbsent.latest.fun_auto_set).toBe(0);
+    expect(resAbsent.registers.fun_auto_set.current_val).toBe(0);
+
+    const resOff = decodeBufferToTelemetry({ 8: 5, 103: 20, 33128: 0 }, rmapAbsent, { agua_brand: "nobis" });
+    expect(resOff.latest.fun_auto_set).toBe(0);
+    expect(resOff.registers.fun_auto_set.current_val).toBe(0);
+
+    const resOn = decodeBufferToTelemetry({ 8: 5, 103: 20, 33128: 1 }, rmapAbsent, { agua_brand: "nobis" });
+    expect(resOn.latest.fun_auto_set).toBe(1);
+    expect(resOn.registers.fun_auto_set.current_val).toBe(1);
+
+    const rmapWithLiveGet = parseRegistersMap({
+      registers_map: [
+        ...sampleAir2Ducts.registers_map,
+        { reg_key: "auto_mode_get", offset: 25, formula: "#", reg_type: "GET" },
+      ],
+    });
+    const resLiveOverride = decodeBufferToTelemetry(
+      { 8: 5, 103: 20, 33128: 1, 25: 0 },
+      rmapWithLiveGet,
+      { agua_brand: "nobis" },
+    );
+    expect(resLiveOverride.latest.fun_auto_set).toBe(0);
+    expect(resLiveOverride.registers.fun_auto_set.current_val).toBe(0);
+  });
+
+  it("decodeBufferToTelemetry reflète l'état réel de fun_pwf_set (0/1/2) et priorise fun_pwf_get", () => {
+    const rmap = parseRegistersMap(sampleAir2Ducts);
+    const resAbsent = decodeBufferToTelemetry({ 8: 5, 103: 20 }, rmap, { agua_brand: "nobis" });
+    expect(resAbsent.latest.fun_pwf_set).toBe(0);
+    expect(resAbsent.registers.fun_pwf_set.current_val).toBe(0);
+
+    const resOn = decodeBufferToTelemetry({ 8: 5, 103: 20, 33154: 1 }, rmap, { agua_brand: "nobis" });
+    expect(resOn.latest.fun_pwf_set).toBe(1);
+    expect(resOn.registers.fun_pwf_set.current_val).toBe(1);
+
+    const resProg = decodeBufferToTelemetry({ 8: 5, 103: 20, 33154: 2 }, rmap, { agua_brand: "nobis" });
+    expect(resProg.latest.fun_pwf_set).toBe(2);
+    expect(resProg.registers.fun_pwf_set.current_val).toBe(2);
+
+    const rmapWithPwfGet = parseRegistersMap({
+      registers_map: [
+        ...sampleAir2Ducts.registers_map,
+        { reg_key: "powerful_get", offset: 26, formula: "#", reg_type: "GET" },
+      ],
+    });
+    const resLiveOverride = decodeBufferToTelemetry(
+      { 8: 5, 103: 20, 33154: 1, 26: 0 },
+      rmapWithPwfGet,
+      { agua_brand: "nobis" },
+    );
+    expect(resLiveOverride.latest.fun_pwf_set).toBe(0);
+    expect(resLiveOverride.registers.fun_pwf_set.current_val).toBe(0);
+  });
+
+  it("decodeBufferToTelemetry reflète l'état réel de Confort/Éco (standby_enabled & can_write_eco)", () => {
+    const baseList = sampleAir2Ducts.registers_map.filter((r) => r.reg_key !== "standby_set");
+    const nobisNoStandbyReg = parseRegistersMap({ registers_map: baseList });
+    const resWork = decodeBufferToTelemetry({ 8: 5, 103: 20 }, nobisNoStandbyReg, { agua_brand: "nobis" });
+    expect(resWork.capabilities.has_eco).toBe(true);
+    expect(resWork.capabilities.can_write_eco).toBe(false);
+    expect(resWork.latest.standby_enabled).toBe(0);
+
+    const resEcoStop = decodeBufferToTelemetry({ 8: 8, 103: 22 }, nobisNoStandbyReg, { agua_brand: "nobis" });
+    expect(resEcoStop.latest.standby_enabled).toBe(1);
+
+    const resStandby = decodeBufferToTelemetry({ 8: 9, 103: 18 }, nobisNoStandbyReg, { agua_brand: "nobis" });
+    expect(resStandby.latest.standby_enabled).toBe(1);
+
+    const multiBrandEcoMap = parseRegistersMap({
+      registers_map: [
+        ...baseList,
+        { reg_key: "comfort_clima_set", offset: 33130, formula: "#", reg_type: "SET" },
+        { reg_key: "standby_get", offset: 27, formula: "#", reg_type: "GET" },
+      ],
+    });
+    const resRegOn = decodeBufferToTelemetry({ 8: 5, 103: 20, 33130: 0, 27: 1 }, multiBrandEcoMap, {});
+    expect(resRegOn.capabilities.has_eco).toBe(true);
+    expect(resRegOn.capabilities.can_write_eco).toBe(true);
+    expect(resRegOn.latest.standby_enabled).toBe(1);
   });
 });

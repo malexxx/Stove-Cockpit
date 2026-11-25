@@ -5,6 +5,7 @@
 window.addEventListener("DOMContentLoaded", async () => {
   try { initThreePaneCockpit(); } catch (e) { console.error("[Init] ThreePaneCockpit:", e); }
   try { initTriArcInteractions(); } catch (e) { console.error("[Init] TriArcInteractions:", e); }
+  try { if (typeof initCockpitAltInteractions === "function") initCockpitAltInteractions(); } catch (e) { console.error("[Init] CockpitAltInteractions:", e); }
   try { renderTriArcCockpit(); } catch (e) { console.error("[Init] RenderTriArc:", e); }
   try { switchTab("tab-control"); } catch (e) { console.error("[Init] SwitchTab:", e); }
 
@@ -15,6 +16,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   } catch (e) {
     console.error("[Init] ProviderReady:", e);
   }
+
+  try { if (typeof renderCockpitUiSettingsGrid === "function") renderCockpitUiSettingsGrid(); } catch (e) { console.error("[Init] CockpitUiGrid:", e); }
+  try { if (typeof updateSettingsAccordionSummaries === "function") updateSettingsAccordionSummaries(); } catch (e) { console.error("[Init] SettingsSummaries:", e); }
+  try { if (typeof renderTriArcCockpit === "function") renderTriArcCockpit(); } catch (e) { console.error("[Init] RenderTriArcPostReady:", e); }
 
   try { if (typeof populateBrandSelects === "function") populateBrandSelects(); } catch (e) { console.error("[Init] Brands:", e); }
   try { if (typeof syncVersionBadges === "function") syncVersionBadges(); } catch (e) { console.error("[Init] Versions:", e); }

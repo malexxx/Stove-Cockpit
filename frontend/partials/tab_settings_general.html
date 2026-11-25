@@ -1,4 +1,37 @@
       <!-- =================================================================== -->
+      <!-- ACCORDÉON 0 : INTERFACE DE PILOTAGE (TRI-ARC & 10 MODES UX/UI)      -->
+      <!-- =================================================================== -->
+      <div class="settings-acc-item card border-l-4 border-l-amber-400 overflow-hidden" data-acc-id="cockpit_ui"
+        data-keywords="interface pilotage cockpit tri-arc thermostat bento faders thumb accordeon intentions hmi spatial vernier ambient glass ux ui style">
+        <button type="button" onclick="toggleSettingsAccordion('cockpit_ui')"
+          class="w-full px-4 py-3.5 flex items-center justify-between gap-3 text-left hover:bg-gray-800/40 transition cursor-pointer">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <span class="text-base shrink-0">🎨</span>
+            <div class="min-w-0">
+              <div class="text-xs sm:text-sm font-bold text-white truncate">Interface de Pilotage</div>
+              <div id="acc-sum-cockpit-ui" class="text-[11px] text-gray-400 truncate">★ Tri-Arc V10 (Original)</div>
+            </div>
+          </div>
+          <span id="acc-arrow-cockpit_ui" class="settings-acc-arrow text-xs text-gray-400 shrink-0 transition-transform duration-200">▼</span>
+        </button>
+
+        <div id="acc-body-cockpit_ui" class="settings-acc-body hidden px-4 pb-4 pt-3 border-t border-gray-800/80 space-y-3.5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <p class="text-xs text-gray-400">
+              Choisissez l'interface affichée dans l'onglet <strong>Pilotage</strong> (effet immédiat, sans perte de fonctionnalités).
+            </p>
+            <button type="button" onclick="switchTab('tab-control')"
+              class="px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold shadow transition flex items-center gap-1.5 cursor-pointer shrink-0">
+              <span>🎮</span><span>Voir dans Pilotage</span>
+            </button>
+          </div>
+
+          <input type="hidden" id="cfg-cockpit-ui-mode" value="triarc" />
+          <div id="cockpit-ui-picker-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+        </div>
+      </div>
+
+      <!-- =================================================================== -->
       <!-- ACCORDÉON 1 : NOMS DES CANALISATIONS (SX / DX)                      -->
       <!-- =================================================================== -->
       <div class="settings-acc-item card border-l-4 border-l-orange-500 overflow-hidden" data-acc-id="zones"

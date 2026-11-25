@@ -74,6 +74,10 @@ async function sendCommand(reg_key, value, forceOverride = false) {
     reportClientError("PILOTAGE", `Échec commande ${reg_key}=${value} : ${msg}`);
   }
   await refreshLatestOnly();
+  if (typeof clearTriArcOptimistic === "function") {
+    clearTriArcOptimistic([reg_key]);
+    if (typeof renderTriArcCockpit === "function") renderTriArcCockpit();
+  }
   const installerTab = document.getElementById("tab-installer");
   if (installerTab && !installerTab.classList.contains("hidden") && window.stoveProvider?.isContainerActive?.()) loadAudit();
 }

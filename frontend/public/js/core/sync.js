@@ -46,6 +46,24 @@ function applyDashboardState(data, updateSeries = true) {
   }
   if (data.registers) {
     registersCatalog = data.registers;
+  } else if (data.latest && registersCatalog) {
+    const latestToRegMap = {
+      fun_auto_set: "fun_auto_set",
+      fun_pwf_set: "fun_pwf_set",
+      temp_amb_setpoint: "temp_amb_setpoint",
+      duct_left_setpoint: "duct_left_setpoint",
+      duct_right_setpoint: "duct_right_setpoint",
+      fan_front_speed: "fan_front_speed",
+      duct_left_speed: "duct_left_speed",
+      duct_right_speed: "duct_right_speed",
+      power_level: "power_level",
+      power_cmd: "power_level",
+    };
+    Object.entries(latestToRegMap).forEach(([srcKey, regKey]) => {
+      if (data.latest[srcKey] !== undefined && data.latest[srcKey] !== null && registersCatalog[regKey]) {
+        registersCatalog[regKey].current_val = data.latest[srcKey];
+      }
+    });
   }
   if (data.settings) {
     currentSettings = data.settings;
@@ -107,8 +125,8 @@ function applyDashboardState(data, updateSeries = true) {
   const instClockEl = document.getElementById("inst-clock-val");
   if (instClockEl) instClockEl.textContent = clockStr;
 
-  const pwfVal = Number(getRegVal("fun_pwf_set", 0));
-  const autoVal = Number(getRegVal("fun_auto_set", latestData.fun_auto_set ?? 1));
+  const pwfVal = Number(latestData.fun_pwf_set ?? getRegVal("fun_pwf_set", 0));
+  const autoVal = Number(getRegVal("fun_auto_set", latestData.fun_auto_set ?? 0));
   const stCode = Number(latestData.status_code ?? 0);
   const climVal = (stCode === 8 || stCode === 9 || Number(latestData.standby_enabled ?? 0) === 1) ? 1 : 0;
   // Registre EEPROM #33250 inactif sur Nobis A10 (#107 bit 2048 = 0) : état lu depuis le mode Silence applicatif
@@ -363,6 +381,11 @@ function applyDashboardState(data, updateSeries = true) {
     if (ductLeftInp) ductLeftInp.value = currentSettings.duct_left_name || "SX";
     const ductRightInp = document.getElementById("cfg-duct-right-name");
     if (ductRightInp) ductRightInp.value = currentSettings.duct_right_name || "DX";
+    const uiModeInp = document.getElementById("cfg-cockpit-ui-mode");
+    const effectiveUiMode = (typeof getActiveCockpitUiMode === "function") ? getActiveCockpitUiMode() : (currentSettings.cockpit_ui_mode || "triarc");
+    if (uiModeInp) uiModeInp.value = effectiveUiMode;
+    if (typeof syncCockpitUiControlClasses === "function") syncCockpitUiControlClasses(effectiveUiMode);
+    if (typeof renderCockpitUiSettingsGrid === "function") renderCockpitUiSettingsGrid();
     if (typeof populatePlusAndBrandSettings === "function") {
       populatePlusAndBrandSettings(currentSettings);
     }

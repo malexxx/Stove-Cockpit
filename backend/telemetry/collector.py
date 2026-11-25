@@ -146,6 +146,8 @@ async def _read_and_store_telemetry_unlocked(
             db_log("ERROR", "LOCAL_GATEWAY", f"Échec lecture passerelle UART : {str(e)}", "local_gateway")
 
     if raw_buf:
+        from services.silence_service import reconcile_silence_with_hardware
+
         record = decode_hardware_buffer(
             raw_buf=raw_buf,
             regs=regs,
@@ -159,6 +161,7 @@ async def _read_and_store_telemetry_unlocked(
             dt_hours=dt_hours,
             register_map=agua_client.raw_registers_map if comm_mode == "agua_cloud" else None,
         )
+        reconcile_silence_with_hardware(record, comm_mode)
     elif comm_mode != "simulation":
         record = build_offline_record(
             prev=prev,

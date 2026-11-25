@@ -115,6 +115,7 @@ def _build_default_settings() -> dict[str, str]:
         "matter_discriminator": "",
         "duct_left_name": "SX",
         "duct_right_name": "DX",
+        "cockpit_ui_mode": "triarc",
         "container_api_token": "",
     }
 

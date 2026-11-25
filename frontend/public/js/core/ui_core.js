@@ -121,8 +121,9 @@ function switchTab(tabId) {
     tabId = "tab-installer";
   }
 
-  // Verrouillage du scroll vertical sur l'écran Pilotage sur smartphone (seul le swipe gauche/droite est actif)
-  if (tabId === "tab-control" && window.innerWidth < 768) {
+  // Verrouillage du scroll vertical sur l'écran Pilotage Tri-Arc sur smartphone
+  const isTriArcUi = typeof getActiveCockpitUiMode !== "function" || getActiveCockpitUiMode() === "triarc";
+  if (tabId === "tab-control" && window.innerWidth < 768 && isTriArcUi) {
     document.documentElement.classList.add("overflow-y-hidden");
     document.body.classList.add("overflow-y-hidden");
   } else {
@@ -227,7 +228,7 @@ function getFrontendVersionLabel() {
     window.stoveProvider?.getFrontendVersion?.() ||
     window.STOVE_FRONTEND_VERSION ||
     window.StoveCore?.frontendVersionTag ||
-    "v0.0.4"
+    "v0.0.5"
   );
 }
 

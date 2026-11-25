@@ -58,7 +58,8 @@ def _normalize_batch_commands(
             old_val = 0.0
 
         is_trim = offset in (70, 71) or rk in ("trim_pellet_pct", "trim_exhaust_pct")
-        is_standby = offset == 33130 or rk == "standby_set"
+        has_cloud_standby = comm_mode == "agua_cloud" and agua_client._find_register_meta(offset, rk)[1]
+        is_standby = (offset == 33130 or rk == "standby_set") and not has_cloud_standby
         normalized_cmds.append({
             "reg_key": rk,
             "offset": offset,

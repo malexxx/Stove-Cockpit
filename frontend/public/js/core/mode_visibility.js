@@ -71,15 +71,12 @@ function applyModeVisibility() {
     }
   }
 
-  // Mode Silence géré exclusivement par le conteneur
+  // Minuteur Silence (temporisé + retour auto) géré exclusivement par le conteneur
   if (!isContainer) {
     if (typeof silenceModeState !== "undefined") {
       silenceModeState = { active: false, remaining_seconds: 0, end_epoch: 0, duration_hours: 2.0 };
     }
     if (typeof closeSilenceModal === "function") closeSilenceModal();
-    if (typeof triArcExpandedMode !== "undefined" && triArcExpandedMode === "silence") {
-      triArcExpandedMode = null;
-    }
   }
   if (typeof syncVersionBadges === "function") syncVersionBadges();
   if (typeof renderTriArcCockpit === "function") renderTriArcCockpit();

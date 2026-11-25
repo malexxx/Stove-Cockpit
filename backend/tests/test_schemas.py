@@ -41,6 +41,11 @@ class TestSchemas(unittest.TestCase):
         self.assertEqual(data["comm_mode"], "simulation")
         self.assertEqual(data["poll_interval_s"], "60")
 
+    def test_settings_payload_cockpit_ui_mode(self):
+        settings = SettingsPayload(cockpit_ui_mode="bento")
+        data = settings.model_dump(exclude_none=True)
+        self.assertEqual(data["cockpit_ui_mode"], "bento")
+
     def test_matter_webhook_payload(self):
         p_power = MatterWebhookPayload(action="set_power", state="ON")
         self.assertEqual(p_power.action, "set_power")

@@ -156,7 +156,10 @@ function getTriArcTelemetryState() {
   const realFanSx = getActualFanButtonVal(latestData.duct_left_actual, fanSx);
   const realFanDx = getActualFanButtonVal(latestData.duct_right_actual, fanDx);
 
-  const pwfVal = getTriArcLiveOrOpt("fun_pwf_set", getRegVal("fun_pwf_set", latestData.fun_pwf_set ?? 0));
+  const rawLivePwf = (latestData.fun_pwf_set !== undefined && latestData.fun_pwf_set !== null)
+    ? latestData.fun_pwf_set
+    : getRegVal("fun_pwf_set", 0);
+  const pwfVal = Math.max(0, Math.round(Number(getTriArcLiveOrOpt("fun_pwf_set", rawLivePwf))));
   const pwrSetVal = getTriArcLiveOrOpt("power_level", getRegVal("power_level", 4));
   // L'activation du mode Boost (POWERFUL) ne passe pas la consigne de puissance à 8 (celle-ci reste celle choisie par l'utilisateur)
   let pwrSp = pwrSetVal;
@@ -177,20 +180,44 @@ function getTriArcTelemetryState() {
     }
   }
 
-  const autoVal = getTriArcLiveOrOpt("fun_auto_set", getRegVal("fun_auto_set", latestData.fun_auto_set ?? 0));
-  const isPsAll = (fanAmb === 8 && fanSx === 8 && fanDx === 8);
-  const autoIdx = autoVal === 1 ? 2 : (isPsAll ? 1 : 0);
+  const caps = _getTriArcCaps();
+  const rawLiveAuto = (latestData.fun_auto_set !== undefined && latestData.fun_auto_set !== null)
+    ? latestData.fun_auto_set
+    : getRegVal("fun_auto_set", 0);
+  const autoPwr = (caps.has_auto !== false && Number(getTriArcLiveOrOpt("fun_auto_set", rawLiveAuto)) > 0) ? 1 : 0;
+  const autoIdx = getTriArcZoneAutoIdx("AMB", { fanAmb, fanSx, fanDx, autoPwr });
 
-  const isSilActive = Boolean(silenceModeState && silenceModeState.active);
-  const remSec = silenceModeState ? Math.max(0, Math.round(silenceModeState.end_epoch - Date.now() / 1000)) : 0;
-  const isEco = !isSilActive && (st === 8 || st === 9 || (getActiveCommMode() === "simulation" && getTriArcLiveOrOpt("standby_set", getRegVal("standby_set", 0)) === 1));
+  const isContainerSil = Boolean(window.stoveProvider?.isContainerActive?.());
+  const containerSilFlag = Boolean(silenceModeState && silenceModeState.active);
+  const rawRemSec = silenceModeState ? Math.max(0, Math.round(silenceModeState.end_epoch - Date.now() / 1000)) : 0;
+  const ducts = Array.isArray(caps.ducts) ? caps.ducts : [];
+  const tMin = Number(caps.temp_min ?? 7);
+  const frostThresh = tMin + 0.5;
+  const hasSxCap = ducts.some(d => d.id === "SX");
+  const hasDxCap = ducts.some(d => d.id === "DX");
+  const isAmbFrost = Number(spAmb) <= frostThresh;
+  const isAllFrost = isAmbFrost && (!hasSxCap || Number(spSx) <= frostThresh) && (!hasDxCap || Number(spDx) <= frostThresh);
+  const isStandaloneSilActive = (st === 0)
+    ? isAllFrost
+    : (st > 0 && isAmbFrost && pwfVal === 0 && (caps.has_auto === false || autoPwr === 1));
+  const isSilActive = isContainerSil ? containerSilFlag : isStandaloneSilActive;
+  const remSec = isContainerSil ? rawRemSec : 0;
+  const isDemoMode = window.stoveProvider?.getMode?.() === "demo";
+  const canWriteEco = Boolean(caps.can_write_eco) || getActiveCommMode() === "simulation" || getActiveCommMode() === "local_gateway" || isDemoMode;
+  const rawLiveEco = (latestData.standby_enabled !== undefined && latestData.standby_enabled !== null)
+    ? latestData.standby_enabled
+    : (canWriteEco ? getRegVal("standby_set", 0) : 0);
+  const ecoRegVal = canWriteEco
+    ? Number(getTriArcLiveOrOpt("standby_set", rawLiveEco))
+    : Number(rawLiveEco);
+  const isEco = (st === 8 || st === 9 || ecoRegVal > 0);
 
   return {
     st, isAlarm, phaseIcon, phaseLabel: phaseLabelRaw, phaseColor,
     realAmb, spAmb, fanAmb, realFanAmb,
     realSx, spSx, fanSx, realFanSx,
     realDx, spDx, fanDx, realFanDx,
-    pwrSp, realPwr, pwfVal, autoIdx, isSilActive, remSec, isEco
+    pwrSp, realPwr, pwfVal, autoPwr, autoIdx, isContainerSil, isSilActive, remSec, isEco, canWriteEco
   };
 }
 
@@ -515,7 +542,7 @@ function renderTriArcSvgForZone(zone, T) {
 
       <!-- 2. ARC GAUCHE : VENTILATION (masqué sur poêle Hydro sans ventilateur frontal) -->
       ${showFanArc ? (() => {
-      const isFanAuto = !isDuct && (T.autoIdx === 1 || T.autoIdx === 2 || fanSp === 8);
+      const isFanAuto = !isDuct && fanMax >= 8 && Number(fanSp) >= 8;
       return `
           <g class="${isFanAuto ? 'pointer-events-none opacity-60' : ''}">
             <path d="${trackFan}" fill="none" stroke="#1e293b" stroke-width="9" stroke-linecap="round" />
@@ -542,9 +569,9 @@ function renderTriArcSvgForZone(zone, T) {
         `;
     })() : ""}
 
-      <!-- 3. ARC DROIT : PUISSANCE (0 Eco ➔ 1..7 ➔ 8, GRISÉ SUR SX/DX, NON CLIQUABLE SI AUTO COMPLET) -->
+      <!-- 3. ARC DROIT : PUISSANCE (0 Eco ➔ 1..7 ➔ 8, GRISÉ SUR SX/DX, NON CLIQUABLE SI AUTO PUISSANCE ACTIF) -->
       ${(() => {
-      const isPwrAuto = (T.autoIdx === 2);
+      const isPwrAuto = Number(T.autoPwr) === 1;
       const isDisabled = isDuct || isPwrAuto;
       return `
           <g opacity="${isDuct ? '0.22' : (isPwrAuto ? '0.60' : '1')}" class="${isDisabled ? 'pointer-events-none' : ''}">
@@ -709,19 +736,41 @@ function renderTriArcDailyChronoFrise(zone = "AMB") {
   `;
 }
 
+function _triArcZoneSupportsFanAuto(zone, caps) {
+  const ducts = Array.isArray(caps?.ducts) ? caps.ducts : [];
+  if (zone === "AMB") {
+    return caps?.has_fan_front !== false && Number(caps?.fan_max ?? 8) >= 8;
+  }
+  const meta = ducts.find(d => d.id === zone);
+  return Boolean(meta) && Number(meta.speed_max ?? 8) >= 8;
+}
+
 function getTriArcZoneAutoIdx(zone, T) {
-  if (T.autoIdx === 2) return 2;
+  const caps = _getTriArcCaps();
   const fanSp = zone === "AMB" ? T.fanAmb : (zone === "SX" ? T.fanSx : T.fanDx);
-  if (T.autoIdx === 1 || fanSp === 8) return 1;
+  const fanIsAuto = _triArcZoneSupportsFanAuto(zone, caps) && Number(fanSp) >= 8;
+  const pwrIsAuto = (caps.has_auto !== false) && Number(T.autoPwr) === 1;
+  if (pwrIsAuto && fanIsAuto) return 2;
+  if (pwrIsAuto && !fanIsAuto) return 3;
+  if (!pwrIsAuto && fanIsAuto) return 1;
   return 0;
 }
 
 function renderTriArcBottomModes(T, zone = triArcZone) {
   const caps = _getTriArcCaps();
-  const silActive = T.isSilActive && T.remSec > 0;
-  const silTimerTxt = silActive
+  const ducts = Array.isArray(caps.ducts) ? caps.ducts : [];
+  const silTimerActive = Boolean(T.isContainerSil) && T.isSilActive && T.remSec > 0;
+  const silBtnActive = T.isContainerSil ? silTimerActive : Boolean(T.isSilActive);
+  const silTimerTxt = silTimerActive
     ? `${Math.floor(T.remSec / 3600)}h${String(Math.floor((T.remSec % 3600) / 60)).padStart(2, "0")}`
     : "";
+  const silBadge = silTimerActive
+    ? `<span id="triarc-silence-btn-timer" class="text-[10px] font-black mt-0.5 tabular-nums text-purple-200">${silTimerTxt}</span>`
+    : (silBtnActive ? `<span class="text-[9.5px] font-black uppercase text-purple-200 mt-0.5">Actif</span>` : "");
+
+  const hasAnyAutoFan = _triArcZoneSupportsFanAuto("AMB", caps)
+    || ducts.some(d => Number(d.speed_max ?? 8) >= 8);
+  const showAutoBtn = caps.has_auto !== false || hasAnyAutoFan;
 
   const zoneAutoIdx = getTriArcZoneAutoIdx(zone, T);
   let autoBtnCls = "bg-slate-900/90 border-slate-700 text-slate-400 hover:border-cyan-400";
@@ -729,6 +778,9 @@ function renderTriArcBottomModes(T, zone = triArcZone) {
   if (zoneAutoIdx === 1) {
     autoBtnCls = "bg-cyan-950/80 border-cyan-400 text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.35)]";
     autoBadge = `<span class="text-[9.5px] font-black uppercase text-cyan-300 mt-0.5">Ventil</span>`;
+  } else if (zoneAutoIdx === 3) {
+    autoBtnCls = "bg-amber-950/80 border-amber-400 text-amber-200 shadow-[0_0_12px_rgba(245,158,11,0.35)]";
+    autoBadge = `<span class="text-[9.5px] font-black uppercase text-amber-300 mt-0.5">${hasAnyAutoFan ? "Flamme" : "Auto"}</span>`;
   } else if (zoneAutoIdx === 2) {
     autoBtnCls = "bg-orange-950/80 border-orange-400 text-orange-200 shadow-[0_0_12px_rgba(249,115,22,0.35)]";
     autoBadge = `<span class="text-[9.5px] font-black uppercase text-orange-300 mt-0.5">Auto</span>`;
@@ -736,47 +788,54 @@ function renderTriArcBottomModes(T, zone = triArcZone) {
 
   const boostButtonHtml = (() => {
     if (caps.has_boost === false) return "";
+    const pwrMax = Math.max(1, Number(caps.power_max ?? 7));
+    const isBoostRealP8 = T.st === 5 && Number(T.realPwr) > pwrMax;
     let boostBtnCls = "bg-slate-900/90 border-slate-700 text-slate-300 hover:border-rose-400";
     let boostIcon = `<span class="text-2xl leading-none">🚀</span>`;
-    if (T.pwfVal === 1) {
+    let boostBadge = "";
+    if (T.pwfVal === 1 || (T.pwfVal === 0 && isBoostRealP8)) {
       boostBtnCls = "bg-rose-950/80 border-rose-400 text-rose-200 shadow-[0_0_14px_rgba(244,63,94,0.45)]";
-      boostIcon = `<span class="text-2xl leading-none drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]">🚀</span>`;
+      boostIcon = `<span class="text-xl leading-none drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]">🚀</span>`;
+      boostBadge = `<span class="text-[9.5px] font-black uppercase text-rose-300 mt-0.5">Boost</span>`;
     } else if (T.pwfVal === 2) {
-      boostBtnCls = "bg-amber-950/80 border-amber-400 text-amber-200 shadow-[0_0_14px_rgba(245,158,11,0.45)]";
+      if (isBoostRealP8) {
+        boostBtnCls = "bg-rose-950/80 border-rose-400 text-rose-200 shadow-[0_0_14px_rgba(244,63,94,0.45)]";
+        boostBadge = `<span class="text-[9.5px] font-black uppercase text-rose-300 mt-0.5">Actif</span>`;
+      } else {
+        boostBtnCls = "bg-amber-950/80 border-amber-400 text-amber-200 shadow-[0_0_14px_rgba(245,158,11,0.45)]";
+        boostBadge = `<span class="text-[9.5px] font-black uppercase text-amber-300 mt-0.5">Prog</span>`;
+      }
       boostIcon = `
           <div class="relative inline-flex items-center justify-center">
-            <span class="text-2xl leading-none drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]">🚀</span>
-            <span class="absolute -bottom-1 -right-1.5 text-xs leading-none">⏱️</span>
+            <span class="text-xl leading-none drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]">🚀</span>
+            <span class="absolute -bottom-1 -right-1.5 text-[10px] leading-none">⏱️</span>
           </div>
         `;
     }
     return `
         <button type="button" onclick="toggleTriArcOptionBubble('boost')"
-          title="Mode Boost / POWERFUL (1=Actif, 2=Programmé)"
+          title="Mode Boost / POWERFUL (0=OFF, 1=Actif, 2=Programmé)"
           class="flex-1 h-14 sm:h-15 min-h-[54px] rounded-2xl border-2 flex flex-col items-center justify-center transition cursor-pointer ${boostBtnCls}">
           ${boostIcon}
+          ${boostBadge}
         </button>
       `;
   })();
 
-  const hasContainerSilence = Boolean(window.stoveProvider?.isContainerActive?.());
-
   return `
     <div class="flex items-stretch gap-2 pt-1 pb-1">
-      ${hasContainerSilence ? `
-      <!-- 1. Silence (🤫 — géré uniquement par le conteneur Mode +) -->
+      <!-- 1. Silence (🤫 — temporisé avec retour auto via conteneur Mode +, direct sans temporisation en Standalone) -->
       <button type="button" onclick="toggleTriArcOptionBubble('silence')"
-        title="Mode Silence (Timer)"
-        class="flex-1 h-14 sm:h-15 min-h-[54px] rounded-2xl border-2 flex flex-col items-center justify-center transition cursor-pointer ${silActive ? 'bg-purple-950/75 border-purple-400 text-white shadow-[0_0_12px_rgba(168,85,247,0.35)]' : 'bg-slate-900/90 border-slate-700 text-slate-400 hover:border-purple-400'}">
-        <span class="text-2xl leading-none">🤫</span>
-        ${silActive ? `<span id="triarc-silence-btn-timer" class="text-[10px] font-black mt-0.5 tabular-nums text-purple-200">${silTimerTxt}</span>` : ""}
+        title="${T.isContainerSil ? 'Mode Silence (Timer Conteneur)' : 'Mode Silence (Sans temporisation)'}"
+        class="flex-1 h-14 sm:h-15 min-h-[54px] rounded-2xl border-2 flex flex-col items-center justify-center transition cursor-pointer ${silBtnActive ? 'bg-purple-950/75 border-purple-400 text-white shadow-[0_0_12px_rgba(168,85,247,0.35)]' : 'bg-slate-900/90 border-slate-700 text-slate-400 hover:border-purple-400'}">
+        <span class="${silBtnActive ? 'text-xl' : 'text-2xl'} leading-none">🤫</span>
+        ${silBadge}
       </button>
-      ` : ""}
 
       <!-- 2. Auto -->
-      ${caps.has_auto !== false ? `
+      ${showAutoBtn ? `
       <button type="button" onclick="toggleTriArcOptionBubble('auto')"
-        title="Mode Auto (OFF / Ventilation / Auto complet)"
+        title="Mode Auto (OFF / Flamme / Ventilation / Auto complet)"
         class="flex-1 h-14 sm:h-15 min-h-[54px] rounded-2xl border-2 flex flex-col items-center justify-center transition cursor-pointer ${autoBtnCls}">
         <span class="text-lg leading-none flex items-center justify-center gap-0.5">
           <span>🔥</span><span class="text-base font-bold">+</span>${svgPropellerFanIcon("w-4 h-4", "currentColor")}
@@ -789,13 +848,21 @@ function renderTriArcBottomModes(T, zone = triArcZone) {
       ${boostButtonHtml}
 
       <!-- 4. Eco / Stand-by -->
-      ${caps.has_eco !== false ? `
+      ${caps.has_eco !== false ? (() => {
+        const ecoBadge = T.st === 8
+          ? `<span class="text-[9.5px] font-black uppercase text-emerald-300 mt-0.5">Eco Stop</span>`
+          : (T.st === 9
+            ? `<span class="text-[9.5px] font-black uppercase text-emerald-300 mt-0.5">Stand-by</span>`
+            : (T.isEco ? `<span class="text-[9.5px] font-black uppercase text-emerald-300 mt-0.5">Confort</span>` : ""));
+        return `
       <button type="button" onclick="toggleTriArcOptionBubble('eco')"
         title="Mode Éco / Confort Mode (Stand-by)"
         class="flex-1 h-14 sm:h-15 min-h-[54px] rounded-2xl border-2 flex flex-col items-center justify-center transition cursor-pointer ${T.isEco ? 'bg-emerald-950/75 border-emerald-400 text-emerald-200 shadow-[0_0_12px_rgba(16,185,129,0.35)]' : 'bg-slate-900/90 border-slate-700 text-slate-300 hover:border-emerald-400'}">
-        <span class="text-2xl leading-none">💤</span>
+        <span class="${T.isEco ? 'text-xl' : 'text-2xl'} leading-none">💤</span>
+        ${ecoBadge}
       </button>
-      ` : ""}
+      `;
+      })() : ""}
     </div>
   `;
 }
@@ -804,31 +871,77 @@ function renderTriArcFloatingOptionBubble(T) {
   if (!triArcExpandedMode) return "";
 
   if (triArcExpandedMode === "auto") {
+    const caps = _getTriArcCaps();
+    const hasAutoPwrCap = caps.has_auto !== false;
+    const hasZoneAutoFan = _triArcZoneSupportsFanAuto(triArcZone, caps);
     const zoneAutoIdx = getTriArcZoneAutoIdx(triArcZone, T);
+    let buttonsHtml = "";
+    let legendHtml = "";
+    if (hasAutoPwrCap && hasZoneAutoFan) {
+      buttonsHtml = `
+        <div class="grid grid-cols-4 gap-1.5 text-[11px] font-bold">
+          <button type="button" onclick="setTriArcAutoOption(0)" class="py-2.5 rounded-2xl border cursor-pointer ${zoneAutoIdx === 0 ? 'bg-slate-700 border-white text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}">OFF</button>
+          <button type="button" onclick="setTriArcAutoOption(3)" class="py-2.5 rounded-2xl border flex items-center justify-center gap-1 cursor-pointer ${zoneAutoIdx === 3 ? 'bg-amber-600 border-amber-300 text-white' : 'bg-slate-950 border-slate-800 text-slate-300'}"><span>🔥</span><span>Flamme</span></button>
+          <button type="button" onclick="setTriArcAutoOption(1)" class="py-2.5 rounded-2xl border flex items-center justify-center gap-1 cursor-pointer ${zoneAutoIdx === 1 ? 'bg-cyan-600 border-cyan-300 text-white' : 'bg-slate-950 border-slate-800 text-slate-300'}">${svgPropellerFanIcon("w-3.5 h-3.5")}<span>Ventil</span></button>
+          <button type="button" onclick="setTriArcAutoOption(2)" class="py-2.5 rounded-2xl border flex items-center justify-center gap-1 cursor-pointer ${zoneAutoIdx === 2 ? 'bg-orange-600 border-orange-300 text-white' : 'bg-slate-950 border-slate-800 text-slate-300'}"><span>🔥+</span>${svgPropellerFanIcon("w-3.5 h-3.5")}</button>
+        </div>
+      `;
+      legendHtml = `
+        <ul class="space-y-1.5 list-disc list-inside text-slate-300">
+          <li><strong>OFF</strong> : Manuel intégral (flamme et ventilation réglées manuellement).</li>
+          <li><strong>Flamme (🔥)</strong> : Modulation automatique de la puissance par le poêle, ventilation libre en manuel.</li>
+          <li><strong>Ventil (${svgPropellerFanIcon("w-3.5 h-3.5 inline text-cyan-400")})</strong> : Ventilation automatique selon la consigne, puissance manuelle.</li>
+          <li><strong>Auto Total (🔥+Ventil)</strong> : Régulation automatique conjointe de la flamme et de la ventilation.</li>
+        </ul>
+      `;
+    } else if (hasAutoPwrCap) {
+      buttonsHtml = `
+        <div class="grid grid-cols-2 gap-2 text-xs font-bold">
+          <button type="button" onclick="setTriArcAutoOption(0)" class="py-2.5 rounded-2xl border cursor-pointer ${zoneAutoIdx === 0 ? 'bg-slate-700 border-white text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}">OFF</button>
+          <button type="button" onclick="setTriArcAutoOption(3)" class="py-2.5 rounded-2xl border flex items-center justify-center gap-1 cursor-pointer ${zoneAutoIdx === 3 || zoneAutoIdx === 2 ? 'bg-amber-600 border-amber-300 text-white' : 'bg-slate-950 border-slate-800 text-slate-300'}"><span>🔥</span><span>Auto</span></button>
+        </div>
+      `;
+      legendHtml = `
+        <ul class="space-y-1.5 list-disc list-inside text-slate-300">
+          <li><strong>OFF</strong> : Puissance réglée manuellement.</li>
+          <li><strong>Auto (🔥)</strong> : Modulation automatique de la puissance par le poêle selon votre température cible.</li>
+        </ul>
+      `;
+    } else {
+      buttonsHtml = `
+        <div class="grid grid-cols-2 gap-2 text-xs font-bold">
+          <button type="button" onclick="setTriArcAutoOption(0)" class="py-2.5 rounded-2xl border cursor-pointer ${zoneAutoIdx === 0 ? 'bg-slate-700 border-white text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}">OFF</button>
+          <button type="button" onclick="setTriArcAutoOption(1)" class="py-2.5 rounded-2xl border flex items-center justify-center gap-1 cursor-pointer ${zoneAutoIdx === 1 || zoneAutoIdx === 2 ? 'bg-cyan-600 border-cyan-300 text-white' : 'bg-slate-950 border-slate-800 text-slate-300'}">${svgPropellerFanIcon("w-4 h-4")}<span>Ventil</span></button>
+        </div>
+      `;
+      legendHtml = `
+        <ul class="space-y-1.5 list-disc list-inside text-slate-300">
+          <li><strong>OFF</strong> : Ventilation réglée manuellement.</li>
+          <li><strong>Ventil (${svgPropellerFanIcon("w-3.5 h-3.5 inline text-cyan-400")})</strong> : Ventilation modulée automatiquement selon la consigne.</li>
+        </ul>
+      `;
+    }
     return `
       <div class="bg-slate-900 border-2 border-cyan-400 rounded-3xl p-3.5 space-y-2.5 shadow-[0_10px_40px_rgba(0,0,0,0.9)]">
         <div class="flex items-center justify-between text-xs border-b border-slate-800 pb-2">
-          <span class="font-bold text-cyan-300 flex items-center gap-1.5">🔥+${svgPropellerFanIcon("w-4 h-4", "#22d3ee")} Mode Auto (3 positions)</span>
+          <span class="font-bold text-cyan-300 flex items-center gap-1.5">🔥+${svgPropellerFanIcon("w-4 h-4", "#22d3ee")} Mode Auto (État réel du poêle)</span>
           <button type="button" onclick="closeTriArcOptionBubble()" class="w-6 h-6 rounded-full bg-slate-800 text-slate-300 font-bold cursor-pointer">✕</button>
         </div>
-        <div class="grid grid-cols-3 gap-2 text-xs font-bold">
-          <button type="button" onclick="setTriArcAutoOption(0)" class="py-2.5 rounded-2xl border cursor-pointer ${zoneAutoIdx === 0 ? 'bg-slate-700 border-white text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}">OFF</button>
-          <button type="button" onclick="setTriArcAutoOption(1)" class="py-2.5 rounded-2xl border flex items-center justify-center gap-1 cursor-pointer ${zoneAutoIdx === 1 ? 'bg-cyan-600 border-cyan-300 text-white' : 'bg-slate-950 border-slate-800 text-slate-300'}">${svgPropellerFanIcon("w-4 h-4")}<span>Ventil</span></button>
-          <button type="button" onclick="setTriArcAutoOption(2)" class="py-2.5 rounded-2xl border flex items-center justify-center gap-1 cursor-pointer ${zoneAutoIdx === 2 ? 'bg-orange-600 border-orange-300 text-white' : 'bg-slate-950 border-slate-800 text-slate-300'}"><span>🔥+</span>${svgPropellerFanIcon("w-4 h-4")}</button>
-        </div>
+        ${buttonsHtml}
         <div class="space-y-1.5 text-[11px] leading-tight text-slate-300 bg-slate-950/70 border border-slate-800 rounded-xl p-2.5">
           <p class="font-semibold text-cyan-300">Fonctionnement du mode Auto</p>
-          <ul class="space-y-1.5 list-disc list-inside text-slate-300">
-            <li><strong>OFF</strong> : Manuel intégral. Vous réglez la ventilation et la puissance de chauffe à votre convenance.</li>
-            <li><strong>Ventil (${svgPropellerFanIcon("w-3.5 h-3.5 inline text-cyan-400")})</strong> : Ventilation modulée automatiquement selon l'écart entre la température ambiante et la consigne pour un confort silencieux.</li>
-            <li><strong>Auto Total (🔥+Ventil)</strong> : Régulation 100% autonome conjointe de la flamme et de la ventilation par le poêle Nobis selon votre température cible.</li>
-          </ul>
+          ${legendHtml}
         </div>
       </div>
     `;
   }
 
   if (triArcExpandedMode === "boost") {
+    const caps = _getTriArcCaps();
+    const pwrMax = Math.max(1, Number(caps.power_max ?? 7));
+    const isBoostRealP8 = T.st === 5 && Number(T.realPwr) > pwrMax;
+    const isBoostOffActive = T.pwfVal === 0 && !isBoostRealP8;
+    const isBoostOnActive = T.pwfVal === 1 || (T.pwfVal === 0 && isBoostRealP8);
     return `
       <div class="bg-slate-900 border-2 border-rose-400 rounded-3xl p-3.5 space-y-2.5 shadow-[0_10px_40px_rgba(0,0,0,0.9)]">
         <div class="flex items-center justify-between text-xs border-b border-slate-800 pb-2">
@@ -836,10 +949,11 @@ function renderTriArcFloatingOptionBubble(T) {
           <button type="button" onclick="closeTriArcOptionBubble()" class="w-6 h-6 rounded-full bg-slate-800 text-slate-300 font-bold cursor-pointer">✕</button>
         </div>
         <div class="grid grid-cols-3 gap-2 text-xs font-bold">
-          <button type="button" onclick="setTriArcBoostOption(0)" class="py-2.5 rounded-2xl border cursor-pointer ${T.pwfVal === 0 ? 'bg-slate-700 border-white text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}">OFF</button>
-          <button type="button" onclick="setTriArcBoostOption(1)" class="py-2.5 rounded-2xl border flex items-center justify-center gap-1 cursor-pointer ${T.pwfVal === 1 ? 'bg-rose-600 border-rose-300 text-white' : 'bg-slate-950 border-slate-800 text-slate-300'}"><span class="text-sm">🚀</span><span>ACTIF</span></button>
+          <button type="button" onclick="setTriArcBoostOption(0)" class="py-2.5 rounded-2xl border cursor-pointer ${isBoostOffActive ? 'bg-slate-700 border-white text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}">OFF</button>
+          <button type="button" onclick="setTriArcBoostOption(1)" class="py-2.5 rounded-2xl border flex items-center justify-center gap-1 cursor-pointer ${isBoostOnActive ? 'bg-rose-600 border-rose-300 text-white' : 'bg-slate-950 border-slate-800 text-slate-300'}"><span class="text-sm">🚀</span><span>ACTIF</span></button>
           <button type="button" onclick="setTriArcBoostOption(2)" class="py-2.5 rounded-2xl border flex items-center justify-center gap-1 cursor-pointer ${T.pwfVal === 2 ? 'bg-amber-600 border-amber-300 text-white' : 'bg-slate-950 border-slate-800 text-slate-300'}"><span class="text-sm">⏱️</span><span>PROG</span></button>
         </div>
+        ${T.pwfVal === 2 && isBoostRealP8 ? `<p class="text-[11px] font-semibold text-rose-300 bg-rose-950/40 border border-rose-500/40 rounded-xl px-2.5 py-1.5">🚀 Créneau POWERFUL actuellement actif en combustion (P8).</p>` : ""}
         <div class="space-y-1.5 text-[11px] leading-tight text-slate-300 bg-slate-950/70 border border-slate-800 rounded-xl p-2.5">
           <p class="font-semibold text-rose-300">Fonctionnement du mode Powerful</p>
           <p>Dans l'environnement Nobis, cette fonction s'appelle <strong>POWERFUL</strong>. Elle enclenche temporairement la ventilation et la puissance de chauffe à leur niveau maximum pour réchauffer très rapidement la pièce, tout en conservant votre consigne habituelle de puissance (qui ne passe pas à 8).</p>
@@ -857,7 +971,6 @@ function renderTriArcFloatingOptionBubble(T) {
   }
 
   if (triArcExpandedMode === "eco") {
-    const isStandbyPhase = (T.st === 8 || T.st === 9);
     const phaseBadgeHtml = T.st === 8
       ? `<div class="py-2.5 px-3 rounded-2xl bg-cyan-950/80 border border-cyan-500 text-cyan-300 text-xs font-bold flex items-center justify-center gap-2 shadow">
           <span>⏳</span><span>PHASE ACTIVE : 8 = ECO STOP</span>
@@ -866,34 +979,25 @@ function renderTriArcFloatingOptionBubble(T) {
         ? `<div class="py-2.5 px-3 rounded-2xl bg-cyan-950/80 border border-cyan-500 text-cyan-300 text-xs font-bold flex items-center justify-center gap-2 shadow">
             <span>🌙</span><span>PHASE ACTIVE : 9 = STAND BY</span>
            </div>`
-        : `<div class="py-2.5 px-3 rounded-2xl bg-slate-950 border border-slate-700 text-slate-300 text-xs font-bold flex items-center justify-center gap-2">
-            <span class="text-slate-400">💤</span><span>ÉTAT POÊLE : VEILLE INACTIVE (${escapeHtml(T.phaseLabel)})</span>
-           </div>`);
+        : (T.isEco
+          ? `<div class="py-2.5 px-3 rounded-2xl bg-emerald-950/70 border border-emerald-500 text-emerald-300 text-xs font-bold flex items-center justify-center gap-2 shadow">
+              <span>💤</span><span>CONFORT CLIMA ACTIF (${escapeHtml(T.phaseLabel)})</span>
+             </div>`
+          : `<div class="py-2.5 px-3 rounded-2xl bg-slate-950 border border-slate-700 text-slate-300 text-xs font-bold flex items-center justify-center gap-2">
+              <span class="text-slate-400">💤</span><span>ÉTAT POÊLE : VEILLE INACTIVE (${escapeHtml(T.phaseLabel)})</span>
+             </div>`));
 
-    const simControlsHtml = getActiveCommMode() === "simulation"
+    const ecoControlsHtml = T.canWriteEco
       ? `
         <div class="grid grid-cols-2 gap-2 text-xs font-bold pt-1">
-          <button type="button" onclick="setTriArcEcoOption(0)" class="py-2.5 rounded-2xl border cursor-pointer ${!T.isEco ? 'bg-slate-700 border-white text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}">OFF (Simulation)</button>
-          <button type="button" onclick="setTriArcEcoOption(1)" class="py-2.5 rounded-2xl border flex items-center justify-center gap-1.5 cursor-pointer ${T.isEco ? 'bg-emerald-600 border-emerald-300 text-white' : 'bg-slate-950 border-slate-800 text-slate-300'}"><span class="text-sm">💤</span><span>ACTIF (Simulation)</span></button>
+          <button type="button" onclick="setTriArcEcoOption(0)" class="py-2.5 rounded-2xl border cursor-pointer ${!T.isEco ? 'bg-slate-700 border-white text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}">OFF</button>
+          <button type="button" onclick="setTriArcEcoOption(1)" class="py-2.5 rounded-2xl border flex items-center justify-center gap-1.5 cursor-pointer ${T.isEco ? 'bg-emerald-600 border-emerald-300 text-white' : 'bg-slate-950 border-slate-800 text-slate-300'}"><span class="text-sm">💤</span><span>ACTIF</span></button>
         </div>
       `
       : "";
 
-    return `
-      <div class="bg-slate-900 border-2 border-emerald-400 rounded-3xl p-3.5 space-y-2.5 shadow-[0_10px_40px_rgba(0,0,0,0.9)]">
-        <div class="flex items-center justify-between text-xs border-b border-slate-800 pb-2">
-          <span class="font-bold text-emerald-300 flex items-center gap-1.5"><span class="text-base">💤</span> Mode Éco (CONFORT CLIMA Nobis)</span>
-          <button type="button" onclick="closeTriArcOptionBubble()" class="w-6 h-6 rounded-full bg-slate-800 text-slate-300 font-bold cursor-pointer">✕</button>
-        </div>
-
-        ${phaseBadgeHtml}
-        ${simControlsHtml}
-
-        <div class="space-y-1.5 text-[11px] leading-tight text-slate-300 bg-slate-950/70 border border-slate-800 rounded-xl p-2.5">
-          <p class="font-semibold text-emerald-300">Fonctionnement Confort Clima (Eco-Stop)</p>
-          <p>Le mode Éco correspond au <strong>Confort Clima</strong> de Nobis. Lorsque la température ambiante mesurée dépasse votre consigne cible, le poêle passe automatiquement en extinction thermique (<strong>ECO STOP</strong>) pour ne pas surchauffer et économiser les granulés. Dès que la température redescend sous la consigne (moins le delta configuré), le poêle redémarre tout seul (<strong>STAND BY</strong>).</p>
-        </div>
-
+    const ecoNoticeHtml = !T.canWriteEco
+      ? `
         <div class="text-[11px] leading-tight text-amber-300/90 bg-amber-950/40 border border-amber-500/30 rounded-xl p-2.5 flex items-start gap-2">
           <span class="text-base leading-none shrink-0">ℹ️</span>
           <div>
@@ -906,13 +1010,69 @@ function renderTriArcFloatingOptionBubble(T) {
             </p>
           </div>
         </div>
+      `
+      : "";
+
+    return `
+      <div class="bg-slate-900 border-2 border-emerald-400 rounded-3xl p-3.5 space-y-2.5 shadow-[0_10px_40px_rgba(0,0,0,0.9)]">
+        <div class="flex items-center justify-between text-xs border-b border-slate-800 pb-2">
+          <span class="font-bold text-emerald-300 flex items-center gap-1.5"><span class="text-base">💤</span> Mode Éco (CONFORT CLIMA Nobis)</span>
+          <button type="button" onclick="closeTriArcOptionBubble()" class="w-6 h-6 rounded-full bg-slate-800 text-slate-300 font-bold cursor-pointer">✕</button>
+        </div>
+
+        ${phaseBadgeHtml}
+        ${ecoControlsHtml}
+
+        <div class="space-y-1.5 text-[11px] leading-tight text-slate-300 bg-slate-950/70 border border-slate-800 rounded-xl p-2.5">
+          <p class="font-semibold text-emerald-300">Fonctionnement Confort Clima (Eco-Stop)</p>
+          <p>Le mode Éco correspond au <strong>Confort Clima</strong> de Nobis. Lorsque la température ambiante mesurée dépasse votre consigne cible, le poêle passe automatiquement en extinction thermique (<strong>ECO STOP</strong>) pour ne pas surchauffer et économiser les granulés. Dès que la température redescend sous la consigne (moins le delta configuré), le poêle redémarre tout seul (<strong>STAND BY</strong>).</p>
+        </div>
+
+        ${ecoNoticeHtml}
       </div>
     `;
   }
 
   if (triArcExpandedMode === "silence") {
-    if (!window.stoveProvider?.isContainerActive?.()) return "";
+    const caps = _getTriArcCaps();
+    if (!T.isContainerSil) {
+      const silDirectActive = Boolean(T.isSilActive);
+      const tMin = Math.round(Number(caps.temp_min ?? 7));
+      return `
+        <div class="bg-slate-900 border-2 border-purple-400 rounded-3xl p-3.5 space-y-2.5 shadow-[0_10px_40px_rgba(0,0,0,0.9)]">
+          <div class="flex items-center justify-between text-xs border-b border-slate-800 pb-2">
+            <span class="font-bold text-purple-300">🤫 Mode Silence (Sans temporisation)</span>
+            <button type="button" onclick="closeTriArcOptionBubble()" class="w-6 h-6 rounded-full bg-slate-800 text-slate-300 font-bold cursor-pointer">✕</button>
+          </div>
+          ${silDirectActive ? `
+            <div class="py-2.5 px-3 rounded-2xl bg-purple-950/70 border border-purple-400 text-purple-200 text-xs font-bold text-center space-y-1">
+              <div>🤫 Mode Silence actif sur le poêle</div>
+              <div class="text-[10.5px] font-normal text-purple-200/80">Remontez simplement la consigne de température ou changez de mode pour en sortir.</div>
+            </div>
+          ` : `
+            <button type="button" onclick="activateStandaloneSilence()"
+              class="w-full py-2.5 px-3 rounded-2xl border border-purple-400 bg-purple-700/80 hover:bg-purple-600 text-white text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition">
+              <span>🤫</span><span>Activer Silence maintenant (${tMin}°C / ralenti)</span>
+            </button>
+          `}
+          <div class="space-y-1.5 text-[11px] leading-tight text-slate-300 bg-slate-950/70 border border-slate-800 rounded-xl p-2.5">
+            <p class="font-semibold text-purple-300">Fonctionnement en mode Standalone</p>
+            <p>Passe les consignes en <strong>hors gel (${tMin}°C)</strong>${T.st !== 0 ? " et règle le poêle en <strong>Auto</strong> (Boost et Chrono coupés) pour un ralenti silencieux immédiat" : ""}.</p>
+          </div>
+          <div class="text-[11px] leading-tight text-indigo-200 bg-indigo-950/40 border border-indigo-500/40 rounded-xl p-2.5 flex items-start gap-2">
+            <span class="text-sm leading-none shrink-0">⏱️</span>
+            <p><strong>Temporisation &amp; retour automatique :</strong> la minuterie (1h à 4h) et la restauration automatique de l'état initial sont gérées uniquement lorsque vous êtes connecté au conteneur (<strong>Mode « + »</strong>).</p>
+          </div>
+        </div>
+      `;
+    }
     const silActive = T.isSilActive && T.remSec > 0;
+    const activeSilHours = silActive ? Math.round(Number(silenceModeState?.duration_hours ?? 0)) : 0;
+    const silHourBtnCls = (h) => (
+      activeSilHours === h
+        ? "bg-purple-700/80 border-purple-300 text-white"
+        : "bg-slate-950 border-slate-800 hover:border-purple-400 text-purple-200"
+    );
     const remStr = silActive ? formatSilenceCountdown(T.remSec) : "OFF";
     return `
       <div class="bg-slate-900 border-2 border-purple-400 rounded-3xl p-3.5 space-y-2.5 shadow-[0_10px_40px_rgba(0,0,0,0.9)]">
@@ -922,10 +1082,10 @@ function renderTriArcFloatingOptionBubble(T) {
         </div>
         <div class="grid grid-cols-5 gap-1.5 text-xs font-bold">
           <button type="button" onclick="setTriArcSilenceHours(0)" class="py-2.5 rounded-2xl border cursor-pointer ${!silActive ? 'bg-slate-700 border-white text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}">OFF</button>
-          <button type="button" onclick="setTriArcSilenceHours(1)" class="py-2.5 rounded-2xl border cursor-pointer bg-slate-950 border-slate-800 hover:border-purple-400 text-purple-200">1h</button>
-          <button type="button" onclick="setTriArcSilenceHours(2)" class="py-2.5 rounded-2xl border cursor-pointer bg-purple-700/80 border-purple-300 text-white">2h</button>
-          <button type="button" onclick="setTriArcSilenceHours(3)" class="py-2.5 rounded-2xl border cursor-pointer bg-slate-950 border-slate-800 hover:border-purple-400 text-purple-200">3h</button>
-          <button type="button" onclick="setTriArcSilenceHours(4)" class="py-2.5 rounded-2xl border cursor-pointer bg-slate-950 border-slate-800 hover:border-purple-400 text-purple-200">4h</button>
+          <button type="button" onclick="setTriArcSilenceHours(1)" class="py-2.5 rounded-2xl border cursor-pointer ${silHourBtnCls(1)}">1h</button>
+          <button type="button" onclick="setTriArcSilenceHours(2)" class="py-2.5 rounded-2xl border cursor-pointer ${silHourBtnCls(2)}">2h</button>
+          <button type="button" onclick="setTriArcSilenceHours(3)" class="py-2.5 rounded-2xl border cursor-pointer ${silHourBtnCls(3)}">3h</button>
+          <button type="button" onclick="setTriArcSilenceHours(4)" class="py-2.5 rounded-2xl border cursor-pointer ${silHourBtnCls(4)}">4h</button>
         </div>
         <div class="space-y-1.5 text-[11px] leading-tight text-slate-300 bg-slate-950/70 border border-slate-800 rounded-xl p-2.5">
           <p class="font-semibold text-purple-300">Fonctionnement intelligent du mode Silence</p>
@@ -941,7 +1101,9 @@ function renderTriArcFloatingOptionBubble(T) {
 
 function renderTriArcCockpit() {
   const track = document.getElementById("triarc-carousel-track");
-  if (!track) return;
+  const triarcCard = document.getElementById("triarc-cockpit-card");
+  const altRoot = document.getElementById("cockpit-alt-root");
+  if (!track && !altRoot) return;
 
   const caps = _getTriArcCaps();
   const ducts = Array.isArray(caps.ducts) ? caps.ducts : [];
@@ -951,31 +1113,52 @@ function renderTriArcCockpit() {
   if (triArcZone === "DX" && !hasDX) triArcZone = "AMB";
 
   const T = getTriArcTelemetryState();
-  const targetZones = triArcDragging ? [triArcDragging.zone] : ["SX", "AMB", "DX"];
+  const uiMode = typeof getActiveCockpitUiMode === "function" ? getActiveCockpitUiMode() : "triarc";
+  if (typeof syncCockpitUiControlClasses === "function") {
+    syncCockpitUiControlClasses(uiMode);
+  }
 
-  targetZones.forEach(z => {
-    const slideEl = document.getElementById(`triarc-slide-${z}`);
-    if (slideEl) {
-      slideEl.innerHTML = `
-        <div class="shrink-0 w-full">
-          ${renderTriArcTopHeader(z, T)}
-        </div>
-        <div class="flex-1 min-h-0 flex flex-col justify-start items-center gap-1 sm:gap-2 w-full">
-          <div class="w-full flex-1 min-h-0 max-h-[300px] sm:max-h-[350px] flex items-start justify-center">
-            ${renderTriArcSvgForZone(z, T)}
-          </div>
-          <div class="w-full shrink-0">
-            ${renderTriArcDailyChronoFrise(z)}
-          </div>
-        </div>
-        ${z === "AMB" ? `
-        <div class="shrink-0 w-full pb-0.5">
-          ${renderTriArcBottomModes(T, z)}
-        </div>
-        ` : ""}
-      `;
+  if (uiMode !== "triarc" && altRoot) {
+    if (triarcCard) triarcCard.classList.add("hidden");
+    ["SX", "AMB", "DX"].forEach(z => {
+      const slideEl = document.getElementById(`triarc-slide-${z}`);
+      if (slideEl) slideEl.innerHTML = "";
+    });
+    altRoot.classList.remove("hidden");
+    altRoot.innerHTML = typeof renderAlternativeCockpit === "function" ? renderAlternativeCockpit(uiMode, T, caps) : "";
+  } else {
+    if (triarcCard) triarcCard.classList.remove("hidden");
+    if (altRoot) {
+      altRoot.classList.add("hidden");
+      altRoot.innerHTML = "";
     }
-  });
+
+    const targetZones = triArcDragging ? [triArcDragging.zone] : ["SX", "AMB", "DX"];
+
+    targetZones.forEach(z => {
+      const slideEl = document.getElementById(`triarc-slide-${z}`);
+      if (slideEl) {
+        slideEl.innerHTML = `
+          <div class="shrink-0 w-full">
+            ${renderTriArcTopHeader(z, T)}
+          </div>
+          <div class="flex-1 min-h-0 flex flex-col justify-start items-center gap-1 sm:gap-2 w-full">
+            <div class="w-full flex-1 min-h-0 max-h-[300px] sm:max-h-[350px] flex items-start justify-center">
+              ${renderTriArcSvgForZone(z, T)}
+            </div>
+            <div class="w-full shrink-0">
+              ${renderTriArcDailyChronoFrise(z)}
+            </div>
+          </div>
+          ${z === "AMB" ? `
+          <div class="shrink-0 w-full pb-0.5">
+            ${renderTriArcBottomModes(T, z)}
+          </div>
+          ` : ""}
+        `;
+      }
+    });
+  }
 
   const overlay = document.getElementById("triarc-floating-overlay");
   const bubble = document.getElementById("triarc-floating-bubble");
@@ -989,8 +1172,10 @@ function renderTriArcCockpit() {
     }
   }
 
-  const offset = triArcZone === "SX" ? "0%" : (triArcZone === "AMB" ? "-100%" : "-200%");
-  track.style.transform = `translateX(${offset})`;
+  if (track && uiMode === "triarc") {
+    const offset = triArcZone === "SX" ? "0%" : (triArcZone === "AMB" ? "-100%" : "-200%");
+    track.style.transform = `translateX(${offset})`;
+  }
 
   const dSx = document.getElementById("triarc-dot-sx");
   const dAmb = document.getElementById("triarc-dot-amb");

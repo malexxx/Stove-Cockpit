@@ -87,6 +87,21 @@ def _apply_brand_preset_defaults(raw_dict: dict) -> None:
     raw_dict["agua_login_api_url"] = str(preset.get("login_api_url") or "").strip()
 
 
+VALID_COCKPIT_UI_MODES = {
+    "triarc",
+    "thermostat",
+    "bento",
+    "faders",
+    "thumb_zone",
+    "cards_accordion",
+    "intentions",
+    "context_hmi",
+    "spatial_flow",
+    "vernier",
+    "ambient_glass",
+}
+
+
 async def _validate_and_normalize_settings(raw_dict: dict) -> None:
     _apply_brand_preset_defaults(raw_dict)
     if "webhook_url" in raw_dict:
@@ -105,6 +120,9 @@ async def _validate_and_normalize_settings(raw_dict: dict) -> None:
         raw_dict["duct_left_name"] = (str(raw_dict["duct_left_name"] or "").strip()[:20]) or "SX"
     if "duct_right_name" in raw_dict:
         raw_dict["duct_right_name"] = (str(raw_dict["duct_right_name"] or "").strip()[:20]) or "DX"
+    if "cockpit_ui_mode" in raw_dict:
+        mode_val = str(raw_dict["cockpit_ui_mode"] or "").strip()
+        raw_dict["cockpit_ui_mode"] = mode_val if mode_val in VALID_COCKPIT_UI_MODES else "triarc"
 
 
 def _persist_settings_dict(raw_dict: dict) -> None:

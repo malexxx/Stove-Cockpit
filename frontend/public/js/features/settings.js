@@ -51,6 +51,8 @@ function toggleSettingsAccordion(accId, forceOpen = false) {
     updateConfigModalFields();
   } else if (accId === "zones") {
     updateDuctChevronPreview();
+  } else if (accId === "cockpit_ui") {
+    if (typeof renderCockpitUiSettingsGrid === "function") renderCockpitUiSettingsGrid();
   } else if (accId === "system") {
     loadStorageStatus();
     loadUpdateStatus();
@@ -234,6 +236,13 @@ async function locateWeatherFromBrowser() {
 }
 
 function updateSettingsAccordionSummaries() {
+  // 0. Interface de Pilotage
+  const sumCockpitUi = document.getElementById("acc-sum-cockpit-ui");
+  if (sumCockpitUi && typeof getActiveCockpitUiMode === "function" && typeof getCockpitUiMeta === "function") {
+    const uiMeta = getCockpitUiMeta(getActiveCockpitUiMode());
+    sumCockpitUi.textContent = `${uiMeta.num === 0 ? "★" : `#${uiMeta.num}`} ${uiMeta.name} • ${uiMeta.badge}`;
+  }
+
   // 1. Zones SX / DX
   updateDuctChevronPreview();
 
@@ -296,7 +305,7 @@ function updateSettingsAccordionSummaries() {
 
   // 6. Système
   const rtcEl = document.getElementById("inst-clock-val");
-  const frontVer = typeof getFrontendVersionLabel === "function" ? getFrontendVersionLabel() : "v0.0.4";
+  const frontVer = typeof getFrontendVersionLabel === "function" ? getFrontendVersionLabel() : "v0.0.5";
   const backVer = typeof getBackendVersionLabel === "function" ? getBackendVersionLabel() : "";
   const rtc = rtcEl ? rtcEl.textContent.trim() : "--:--";
   const verSummary = backVer ? `Front ${frontVer} • Back ${backVer}` : `Front ${frontVer}`;
@@ -381,6 +390,8 @@ function openConfigModal(highlightFieldId = null) {
       targetAcc = "domotic";
     } else if (["cfg-duct-left-name", "cfg-duct-right-name"].includes(highlightFieldId)) {
       targetAcc = "zones";
+    } else if (highlightFieldId === "cfg-cockpit-ui-mode") {
+      targetAcc = "cockpit_ui";
     }
     toggleSettingsAccordion(targetAcc, true);
   }
@@ -445,7 +456,8 @@ async function saveSettings() {
     matter_device_name: document.getElementById("cfg-matter-name") ? document.getElementById("cfg-matter-name").value : "Stove Cockpit",
     matter_port: document.getElementById("cfg-matter-port") ? document.getElementById("cfg-matter-port").value : "5540",
     duct_left_name: document.getElementById("cfg-duct-left-name") ? (document.getElementById("cfg-duct-left-name").value.trim() || "SX") : "SX",
-    duct_right_name: document.getElementById("cfg-duct-right-name") ? (document.getElementById("cfg-duct-right-name").value.trim() || "DX") : "DX"
+    duct_right_name: document.getElementById("cfg-duct-right-name") ? (document.getElementById("cfg-duct-right-name").value.trim() || "DX") : "DX",
+    cockpit_ui_mode: typeof getActiveCockpitUiMode === "function" ? getActiveCockpitUiMode() : "triarc"
   };
   if (mode === "agua_cloud") {
     payload.agua_brand = brand;
@@ -737,7 +749,7 @@ async function waitForInternalUpdateReload(previousReleaseId, successMessage) {
           if ("serviceWorker" in navigator) {
             navigator.serviceWorker.getRegistration().then((reg) => {
               if (reg) reg.update();
-            }).catch(() => {});
+            }).catch(() => { });
           }
           setTimeout(() => window.location.reload(), 900);
           return;

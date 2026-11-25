@@ -57,7 +57,7 @@ def _fulfill_static_route(route, url: str) -> None:
     route.fulfill(status=404, body="Not Found")
 
 
-def _attach_app_routes(page: Page, backend_version: str = "0.0.4") -> None:
+def _attach_app_routes(page: Page, backend_version: str = "0.0.5") -> None:
     """Sert la SPA assemblée, les fichiers statiques depuis le disque et mocke les endpoints /api/*."""
     assembled_html = render_spa_html()
 
@@ -389,24 +389,47 @@ def test_ui_tab_active_visual_indicators(browser_instance):
 
 
 def test_ui_silence_container_only(page: Page):
-    """Vérifie que le bouton Silence n'apparaît qu'en Mode + Conteneur et disparaît en Autonome/Démo."""
+    """Vérifie que le mode Silence propose le minuteur en Conteneur et l'activation directe sans timer en Autonome/Démo."""
     page.goto(f"{APP_ORIGIN}/", wait_until="load")
     page.wait_for_function("() => window.stoveProvider && window.stoveProvider.servedByContainer === true")
 
     res = page.evaluate("""() => {
-        const containerHasSilence = Boolean(document.querySelector("#triarc-slide-AMB button[onclick*=\\"silence\\"]"));
+        const checkSilenceBubble = () => {
+            const btn = document.querySelector("#triarc-slide-AMB button[onclick*=\\"silence\\"]");
+            toggleTriArcOptionBubble("silence");
+            const bubbleHtml = document.getElementById("triarc-floating-bubble")?.innerHTML || "";
+            const hasTimerBubble = Boolean(document.getElementById("triarc-silence-bubble-timer"));
+            const hasHoursFn = bubbleHtml.includes("setTriArcSilenceHours");
+            const hasDirectBtn = bubbleHtml.includes("activateStandaloneSilence");
+            const hasNoTimerLabel = bubbleHtml.includes("Sans temporisation");
+            closeTriArcOptionBubble();
+            return { hasBtn: Boolean(btn), hasTimerBubble, hasHoursFn, hasDirectBtn, hasNoTimerLabel };
+        };
+
+        const container = checkSilenceBubble();
         window.stoveProvider.mode = "standalone";
         applyModeVisibility();
-        const standaloneHasSilence = Boolean(document.querySelector("#triarc-slide-AMB button[onclick*=\\"silence\\"]"));
+        const standalone = checkSilenceBubble();
         window.stoveProvider.mode = "demo";
         applyModeVisibility();
-        const demoHasSilence = Boolean(document.querySelector("#triarc-slide-AMB button[onclick*=\\"silence\\"]"));
-        return { containerHasSilence, standaloneHasSilence, demoHasSilence };
+        const demo = checkSilenceBubble();
+        return { container, standalone, demo };
     }""")
 
-    assert res["containerHasSilence"] is True
-    assert res["standaloneHasSilence"] is False
-    assert res["demoHasSilence"] is False
+    assert res["container"]["hasBtn"] is True
+    assert res["container"]["hasTimerBubble"] is True
+    assert res["container"]["hasHoursFn"] is True
+    assert res["container"]["hasDirectBtn"] is False
+
+    assert res["standalone"]["hasBtn"] is True
+    assert res["standalone"]["hasTimerBubble"] is False
+    assert res["standalone"]["hasDirectBtn"] is True
+    assert res["standalone"]["hasNoTimerLabel"] is True
+
+    assert res["demo"]["hasBtn"] is True
+    assert res["demo"]["hasTimerBubble"] is False
+    assert res["demo"]["hasDirectBtn"] is True
+    assert res["demo"]["hasNoTimerLabel"] is True
 
 
 def test_ui_independent_frontend_backend_versions(browser_instance):
@@ -428,9 +451,109 @@ def test_ui_independent_frontend_backend_versions(browser_instance):
         };
     }""")
 
-    assert res["hdrFront"] == "📱 Front v0.0.4"
+    assert res["hdrFront"] == "📱 Front v0.0.5"
     assert res["hdrBack"] == "🐳 Back v9.8.7"
-    assert res["cfgFront"] == "v0.0.4"
+    assert res["cfgFront"] == "v0.0.5"
     assert res["cfgBack"] == "v9.8.7"
     assert res["diffVisible"] is True
     context.close()
+
+
+def test_ui_cockpit_11_modes_settings_and_hydro_safety(browser_instance):
+    """Vérifie le sélecteur d'interfaces dans Paramètres, les 11 vues (desktop+mobile), la barre batch et le mode Hydro."""
+    modes = [
+        "triarc",
+        "thermostat",
+        "bento",
+        "faders",
+        "thumb_zone",
+        "cards_accordion",
+        "intentions",
+        "context_hmi",
+        "spatial_flow",
+        "vernier",
+        "ambient_glass",
+    ]
+    for viewport in ({"width": 1280, "height": 800}, {"width": 375, "height": 667}):
+        context = browser_instance.new_context(viewport=viewport)
+        page = context.new_page()
+        page_errors = []
+        page.on("pageerror", lambda err: page_errors.append(str(err)))
+        _attach_app_routes(page)
+        page.goto(f"{APP_ORIGIN}/", wait_until="load")
+        page.wait_for_function("() => window.stoveProvider && window.stoveProvider.servedByContainer === true")
+
+        res = page.evaluate("""async (modesList) => {
+            switchTab("tab-installer");
+            toggleSettingsAccordion("cockpit_ui", true);
+            const cardCount = document.querySelectorAll("#cockpit-ui-picker-grid [data-ui-mode-card]").length;
+
+            const rendered = {};
+            for (const m of modesList) {
+                await setActiveCockpitUiMode(m, { persist: false, silent: true });
+                switchTab("tab-control");
+                applyDashboardState({
+                    latest: {
+                        status_code: 5,
+                        status_label: "TRAVAIL (Normal)",
+                        temp_ambient: 20.4,
+                        temp_amb_setpoint: 21,
+                        duct_left_temp: 19.0,
+                        duct_left_setpoint: 20,
+                        duct_right_temp: 18.0,
+                        duct_right_setpoint: 18,
+                        power_actual: 3,
+                        power_level: 4,
+                        fan_front_speed: 3,
+                        duct_left_speed: 2,
+                        duct_right_speed: 0
+                    }
+                }, false);
+                const altRoot = document.getElementById("cockpit-alt-root");
+                const triCard = document.getElementById("triarc-cockpit-card");
+                rendered[m] = m === "triarc"
+                    ? (!triCard.classList.contains("hidden") && altRoot.classList.contains("hidden"))
+                    : (triCard.classList.contains("hidden") && !altRoot.classList.contains("hidden") && altRoot.textContent.trim().length > 0);
+            }
+
+            // Test barre de validation non-bloquante sur une nouvelle vue
+            await setActiveCockpitUiMode("thermostat", { persist: false, silent: true });
+            cockpitStepTemp("AMB", 1);
+            const pendingVisible = Boolean(document.getElementById("cockpit-pending-bar"));
+            cancelTriArcPendingChanges();
+            const pendingCleared = !document.getElementById("cockpit-pending-bar");
+
+            // Test profil Hydro sans canalisation et sans ventilateur frontal
+            window.currentCapabilities = {
+                stove_type: "hydro",
+                temp_unit: "°C",
+                temp_label: "Eau",
+                temp_min: 40,
+                temp_max: 80,
+                power_min: 1,
+                power_max: 5,
+                has_fan_front: false,
+                fan_min: 0,
+                fan_max: 0,
+                ducts: [],
+                has_auto: true,
+                has_boost: false,
+                has_eco: true,
+            };
+            const hydroOk = {};
+            for (const m of modesList) {
+                await setActiveCockpitUiMode(m, { persist: false, silent: true });
+                hydroOk[m] = m === "triarc"
+                    ? document.getElementById("triarc-slide-AMB").textContent.trim().length > 0
+                    : document.getElementById("cockpit-alt-root").textContent.trim().length > 0;
+            }
+            return { cardCount, rendered, pendingVisible, pendingCleared, hydroOk };
+        }""", modes)
+
+        assert res["cardCount"] == 11
+        assert all(res["rendered"].values()), f"Rendu incomplet sur {viewport}: {res['rendered']}"
+        assert res["pendingVisible"] is True
+        assert res["pendingCleared"] is True
+        assert all(res["hydroOk"].values()), f"Erreur profil Hydro sur {viewport}: {res['hydroOk']}"
+        assert page_errors == [], f"Erreurs JS sur {viewport}: {page_errors}"
+        context.close()

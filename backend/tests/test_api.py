@@ -403,3 +403,13 @@ class TestAPIEndpoints(SimulationApiTestCase):
 
         # Restauration marque par défaut du test
         self.client.post("/api/settings", json={"agua_brand": "nobis"})
+
+    def test_cockpit_ui_mode_settings_persistence(self):
+        """Vérifie la persistance et la normalisation de cockpit_ui_mode via /api/settings."""
+        resp_valid = self.client.post("/api/settings", json={"cockpit_ui_mode": "ambient_glass"})
+        self.assertEqual(resp_valid.status_code, 200)
+        self.assertEqual(resp_valid.json()["settings"]["cockpit_ui_mode"], "ambient_glass")
+
+        resp_invalid = self.client.post("/api/settings", json={"cockpit_ui_mode": "unknown_mode"})
+        self.assertEqual(resp_invalid.status_code, 200)
+        self.assertEqual(resp_invalid.json()["settings"]["cockpit_ui_mode"], "triarc")

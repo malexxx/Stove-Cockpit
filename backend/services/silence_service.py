@@ -340,3 +340,45 @@ async def _auto_expire_silence_job() -> None:
         await deactivate_silence_mode(is_auto_expired=True)
     except Exception as e:
         db_log("ERROR", "SILENCE", f"Erreur lors de la fin automatique du mode Silence ! : {str(e)}", get_active_mode())
+
+
+def reconcile_silence_with_hardware(record: dict[str, Any], comm_mode: str) -> bool:
+    """Désactive le mode Silence applicatif si une modification manuelle physique est détectée sur le poêle."""
+    if comm_mode == "simulation" or not record:
+        return False
+    state = get_silence_state()
+    now_ts = time.time()
+    if not bool(state.get("active", False)) or now_ts >= float(state.get("end_epoch", 0.0)):
+        return False
+    if (now_ts - float(state.get("start_epoch", 0.0))) < 15.0:
+        return False
+    status_code = int(record.get("status_code") if record.get("status_code") is not None else 0)
+    if status_code == -1:
+        return False
+
+    temp_overridden = float(record.get("temp_amb_setpoint") or 7.0) > 7.5
+    mode_overridden = (
+        bool(state.get("is_stove_on"))
+        and status_code != 0
+        and (int(record.get("fun_pwf_set") or 0) > 0 or int(record.get("fun_auto_set") or 0) == 0)
+    )
+    if not (temp_overridden or mode_overridden):
+        return False
+
+    if scheduler.get_job("silence_timer_job"):
+        try:
+            scheduler.remove_job("silence_timer_job")
+        except Exception as exc:
+            logger.debug("Suppression silence_timer_job ignorée : %s", exc)
+
+    state["active"] = False
+    state["end_epoch"] = 0.0
+    save_silence_state(state)
+    record["set_silece_set"] = 0
+    db_log(
+        "INFO",
+        "SILENCE",
+        "Mode Silence ! désactivé automatiquement : modification manuelle détectée sur le poêle.",
+        comm_mode,
+    )
+    return True

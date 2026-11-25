@@ -125,7 +125,7 @@ def _resolve_docker_version(app_version: str) -> str:
     return env_dv
 
 
-APP_VERSION: str = _resolve_app_version("0.0.4")
+APP_VERSION: str = _resolve_app_version("0.0.5")
 DOCKER_VERSION: str = _resolve_docker_version(APP_VERSION)
 
 SYSTEM_DB_PATH = os.path.join(DATA_DIR, "nobis_a10_system.db")
@@ -187,8 +187,12 @@ AGUA_REG_KEY_ALIASES: dict[str, list[str]] = {
     "duct_left_speed": list(_CANONICAL_ALIASES.get("duct_left_speed", ["canalization_sx_set", "can_sx_vent_set", "vent_can_sx_set"])),
     "duct_right_setpoint": list(_CANONICAL_ALIASES.get("duct_right_setpoint", ["canalization_dx_temp_air_set", "can_dx_temp_set", "temp_can_dx_set"])),
     "duct_right_speed": list(_CANONICAL_ALIASES.get("duct_right_speed", ["canalization_dx_set", "can_dx_vent_set", "vent_can_dx_set"])),
-    "fun_auto_set": list(_CANONICAL_ALIASES.get("fun_auto_set", ["fun_auto_set", "auto_mode_set"])),
-    "fun_pwf_set": list(_CANONICAL_ALIASES.get("fun_pwf_set", ["fun_pwf_set", "powerful_set"])),
+    "fun_auto_set": list(_CANONICAL_ALIASES.get("fun_auto_set", ["fun_auto_set", "auto_mode_set", "modulation_auto_set", "auto_set"])),
+    "fun_auto_get": list(_CANONICAL_ALIASES.get("fun_auto_get", ["fun_auto_get", "auto_mode_get", "auto_get", "modulation_auto_get", "enable_auto_get"])),
+    "fun_pwf_set": list(_CANONICAL_ALIASES.get("fun_pwf_set", ["fun_pwf_set", "powerful_set", "enable_pwf_set", "boost_set"])),
+    "fun_pwf_get": list(_CANONICAL_ALIASES.get("fun_pwf_get", ["fun_pwf_get", "powerful_get", "enable_pwf_get", "boost_get"])),
+    "standby_set": list(_CANONICAL_ALIASES.get("standby_set", ["standby_set", "eco_mode_set", "energy_saving_set", "comfort_clima_set", "clima_confort_set"])),
+    "standby_get": list(_CANONICAL_ALIASES.get("standby_get", ["standby_get", "eco_mode_get", "energy_saving_get", "comfort_clima_get", "clima_confort_get"])),
     "chrono_week_enable_set": list(_CANONICAL_ALIASES.get("chrono_week_enable_set", ["chrono_week_enable_set", "chrono_enable_set"])),
 }
 
@@ -224,7 +228,7 @@ TELEMETRY_COLUMNS: dict[str, str] = {
     "glow_plug_on": "INTEGER DEFAULT 0",
     "power_level": "INTEGER DEFAULT 4",
     "power_actual": "INTEGER DEFAULT 4",
-    "fun_auto_set": "INTEGER DEFAULT 1",
+    "fun_auto_set": "INTEGER DEFAULT 0",
     "standby_enabled": "INTEGER DEFAULT 0",
     "fun_pwf_set": "INTEGER DEFAULT 0",
     "set_silece_set": "INTEGER DEFAULT 0",
