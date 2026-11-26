@@ -22,7 +22,9 @@ from services.update_bootstrap import (
 )
 from services.update_service import (
     _extract_tarball_safely,
+    _fetch_latest_release_info,
     _flatten_monorepo_stage_if_needed,
+    _stage_and_promote_release,
     _validate_github_url,
     _validate_staged_release,
     apply_internal_update,
@@ -468,14 +470,16 @@ class TestSelfUpdateSystem(BugBountyTestCase):
             with open(pub_path, encoding="utf-8") as fh:
                 pub = fh.read()
             self.assertIn("GIT_COMMIT=${{ github.sha }}", pub)
+            self.assertIn("frontend-dist-release", pub)
+            self.assertIn("frontend-dist.tar.gz", pub)
 
     def test_docker_env_version_vars_and_stale_env_guard(self):
         from services.update_service import _APP_VERSION_RE
 
         with open(os.path.join(config.BASE_DIR, "Dockerfile"), encoding="utf-8") as fh:
             df = fh.read()
-        self.assertIn("ARG APP_VERSION=0.0.9", df)
-        self.assertIn("ARG DOCKER_VERSION=v0.0.9", df)
+        self.assertIn("ARG APP_VERSION=0.0.91", df)
+        self.assertIn("ARG DOCKER_VERSION=v0.0.91", df)
         self.assertIn("APP_VERSION=${APP_VERSION}", df)
         self.assertIn("DOCKER_VERSION=${DOCKER_VERSION}", df)
 
@@ -483,7 +487,7 @@ class TestSelfUpdateSystem(BugBountyTestCase):
             cfg_txt = fh.read()
         m_ver = _APP_VERSION_RE.search(cfg_txt)
         self.assertIsNotNone(m_ver)
-        self.assertEqual(m_ver.group(1), "0.0.9")
+        self.assertEqual(m_ver.group(1), "0.0.91")
 
         # Garde-fou anti-variable figée (ex: conteneur mis à jour ayant conservé APP_VERSION=2.2.0)
         with patch.dict(os.environ, {"APP_VERSION": "2.2.0", "DOCKER_VERSION": "2.2.0"}, clear=False):
@@ -527,3 +531,158 @@ class TestSelfUpdateSystem(BugBountyTestCase):
                 self.assertNotIn("v1.0", fh.read())
         with open(os.path.join(config.REPO_ROOT, "README.md"), encoding="utf-8") as fh:
             self.assertNotIn("v1.0", fh.read())
+
+    def test_frontend_dist_asset_staging_and_env_wiring(self):
+        with open(os.path.join(config.BASE_DIR, "requirements.txt"), encoding="utf-8") as fh:
+            req_txt = fh.read()
+        with open(os.path.join(config.BASE_DIR, "matter_bridge", "package.json"), encoding="utf-8") as fh:
+            pkg_json = fh.read()
+
+        repo_files = {
+            "malexxx-Stove-Cockpit-1234567/backend/server.py": "def main():\n    pass\n",
+            "malexxx-Stove-Cockpit-1234567/backend/main.py": "app = object()\n",
+            "malexxx-Stove-Cockpit-1234567/backend/config.py": 'APP_VERSION = "0.0.10"\n',
+            "malexxx-Stove-Cockpit-1234567/backend/requirements.txt": req_txt,
+            "malexxx-Stove-Cockpit-1234567/backend/routers/admin.py": "# router\n",
+            "malexxx-Stove-Cockpit-1234567/backend/services/update_service.py": "# service\n",
+            "malexxx-Stove-Cockpit-1234567/backend/matter_bridge/package.json": pkg_json,
+            "malexxx-Stove-Cockpit-1234567/frontend/index.html": "<html>old</html>\n",
+        }
+        fe_files = {
+            "frontend_dist/index.html": '<html><script type="module" crossorigin src="./assets/index-NEW.js"></script></html>\n',
+            "frontend_dist/assets/index-NEW.js": "console.log('new');\n",
+            "frontend_dist/js/core/ui_core.js": "// new ui_core\n",
+        }
+
+        def _make_tar(entries: dict[str, str], path: str) -> None:
+            with tarfile.open(path, "w:gz") as tf:
+                for arc_name, text in entries.items():
+                    raw = text.encode("utf-8")
+                    ti = tarfile.TarInfo(arc_name)
+                    ti.size = len(raw)
+                    tf.addfile(ti, io.BytesIO(raw))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = os.path.join(tmp, "data")
+            image_dir = os.path.join(tmp, "image")
+            os.makedirs(os.path.join(image_dir, "matter_bridge"), exist_ok=True)
+            with open(os.path.join(image_dir, "requirements.txt"), "w", encoding="utf-8") as fh:
+                fh.write(req_txt)
+            with open(os.path.join(image_dir, "matter_bridge", "package.json"), "w", encoding="utf-8") as fh:
+                fh.write(pkg_json)
+
+            src_tar = os.path.join(tmp, "src.tar.gz")
+            fe_tar = os.path.join(tmp, "frontend-dist.tar.gz")
+            _make_tar(repo_files, src_tar)
+            _make_tar(fe_files, fe_tar)
+
+            rel = _stage_and_promote_release(
+                src_tar,
+                data_dir,
+                image_dir,
+                sha="1234567890abcdef1234567890abcdef12345678",
+                channel="releases",
+                fallback_version="0.0.10",
+                frontend_tar_path=fe_tar,
+            )
+            self.assertTrue(rel["frontend_updated"])
+
+            target = resolve_boot_target(data_dir, image_dir, "0.0.9")
+            self.assertTrue(target["is_override"])
+            env_override = build_child_env({"PATH": "/usr/bin"}, target, image_dir, "0.0.9")
+            expected_fe_dir = os.path.join(target["target_dir"], "frontend_dist")
+            self.assertEqual(env_override["STOVE_FRONTEND_DIST"], expected_fe_dir)
+            with open(os.path.join(expected_fe_dir, "index.html"), encoding="utf-8") as fh:
+                self.assertIn("index-NEW.js", fh.read())
+
+            env_image = build_child_env(
+                env_override,
+                {"target_dir": image_dir, "is_override": False, "release": None},
+                image_dir,
+                "0.0.10",
+            )
+            self.assertNotIn("STOVE_FRONTEND_DIST", env_image)
+
+    def test_frontend_dist_fallback_assembly_without_asset(self):
+        with open(os.path.join(config.BASE_DIR, "requirements.txt"), encoding="utf-8") as fh:
+            req_txt = fh.read()
+        with open(os.path.join(config.BASE_DIR, "matter_bridge", "package.json"), encoding="utf-8") as fh:
+            pkg_json = fh.read()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            stage_dir = os.path.join(tmp, "stage")
+            image_dir = os.path.join(tmp, "image")
+            os.makedirs(os.path.join(image_dir, "frontend_dist", "assets"), exist_ok=True)
+            os.makedirs(os.path.join(image_dir, "frontend_dist", "css"), exist_ok=True)
+            with open(os.path.join(image_dir, "frontend_dist", "index.html"), "w", encoding="utf-8") as fh:
+                fh.write('<head><script type="module" crossorigin src="./assets/index-IMG.js"></script></head>')
+            with open(os.path.join(image_dir, "frontend_dist", "assets", "index-IMG.js"), "w", encoding="utf-8") as fh:
+                fh.write("console.log('img-bundle');")
+            with open(os.path.join(image_dir, "frontend_dist", "css", "tailwind.generated.css"), "w", encoding="utf-8") as fh:
+                fh.write(".flex{display:flex}.hidden{display:none}")
+
+            os.makedirs(os.path.join(stage_dir, "backend", "routers"), exist_ok=True)
+            os.makedirs(os.path.join(stage_dir, "backend", "services"), exist_ok=True)
+            os.makedirs(os.path.join(stage_dir, "backend", "matter_bridge"), exist_ok=True)
+            os.makedirs(os.path.join(stage_dir, "frontend", "partials"), exist_ok=True)
+            os.makedirs(os.path.join(stage_dir, "frontend", "public", "js", "core"), exist_ok=True)
+            with open(os.path.join(stage_dir, "backend", "server.py"), "w", encoding="utf-8") as fh:
+                fh.write("pass\n")
+            with open(os.path.join(stage_dir, "backend", "main.py"), "w", encoding="utf-8") as fh:
+                fh.write("pass\n")
+            with open(os.path.join(stage_dir, "backend", "config.py"), "w", encoding="utf-8") as fh:
+                fh.write('APP_VERSION = "0.0.10"\n')
+            with open(os.path.join(stage_dir, "backend", "requirements.txt"), "w", encoding="utf-8") as fh:
+                fh.write(req_txt)
+            with open(os.path.join(stage_dir, "backend", "matter_bridge", "package.json"), "w", encoding="utf-8") as fh:
+                fh.write(pkg_json)
+            with open(os.path.join(stage_dir, "frontend", "partials", "hdr.html"), "w", encoding="utf-8") as fh:
+                fh.write('<span id="hdr-conn-phone"></span>')
+            with open(os.path.join(stage_dir, "frontend", "public", "js", "core", "ui_core.js"), "w", encoding="utf-8") as fh:
+                fh.write("// updated from main\n")
+            with open(os.path.join(stage_dir, "frontend", "index.html"), "w", encoding="utf-8") as fh:
+                fh.write('<head><script type="module" src="/src/main.js"></script></head><body><!-- @include partials/hdr.html --></body>')
+
+            ok = _flatten_monorepo_stage_if_needed(stage_dir, image_dir=image_dir)
+            self.assertTrue(ok)
+            self.assertFalse(os.path.exists(os.path.join(stage_dir, "frontend")))
+            with open(os.path.join(stage_dir, "frontend_dist", "index.html"), encoding="utf-8") as fh:
+                html = fh.read()
+            self.assertIn('<span id="hdr-conn-phone"></span>', html)
+            self.assertIn('./assets/index-IMG.js', html)
+            self.assertNotIn('/src/main.js', html)
+            with open(os.path.join(stage_dir, "frontend_dist", "js", "core", "ui_core.js"), encoding="utf-8") as fh:
+                self.assertIn("updated from main", fh.read())
+            self.assertTrue(os.path.isfile(os.path.join(stage_dir, "frontend_dist", "css", "tailwind.generated.css")))
+
+    def test_fetch_latest_release_info_extracts_frontend_dist_asset(self):
+        class _FakeReleaseClient:
+            async def get(self, url: str, **_kwargs):
+                if url.endswith("/releases/latest"):
+                    return _FakeResp(
+                        200,
+                        json_data={
+                            "tag_name": "v0.0.10",
+                            "target_commitish": "a" * 40,
+                            "tarball_url": "https://api.github.com/repos/malexxx/Stove-Cockpit/tarball/v0.0.10",
+                            "assets": [
+                                {
+                                    "name": "frontend-dist.tar.gz",
+                                    "browser_download_url": "https://github.com/malexxx/Stove-Cockpit/releases/download/v0.0.10/frontend-dist.tar.gz",
+                                }
+                            ],
+                        },
+                    )
+                return _FakeResp(404, json_data={})
+
+        @asynccontextmanager
+        async def _fake_borrow(timeout: float = 15.0):
+            yield _FakeReleaseClient()
+
+        with patch("services.update_service.borrow_http_client", _fake_borrow):
+            info = asyncio.run(_fetch_latest_release_info("malexxx/Stove-Cockpit"))
+
+        self.assertEqual(
+            info["frontend_dist_url"],
+            "https://github.com/malexxx/Stove-Cockpit/releases/download/v0.0.10/frontend-dist.tar.gz",
+        )

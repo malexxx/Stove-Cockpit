@@ -229,4 +229,24 @@ describe("Micronova register engine (parité backend)", () => {
     expect(latest.status_code).toBe(5);
     expect(latest.status_label).toBe("TRAVAIL (Normal)");
   });
+
+  it("conserve les canalisations SX et DX même si leur registre _enable vaut 0 dans le buffer (ex: AL02 / arrêt)", () => {
+    const rmap = parseRegistersMap({
+      registers_map: [
+        ...sampleAir2Ducts.registers_map,
+        { reg_key: "can_sx_vent_enable", offset: 33135, formula: "#", reg_type: "ENABLE", enable_val: [{ value: "1" }] },
+        { reg_key: "can_dx_vent_enable", offset: 33133, formula: "#", reg_type: "ENABLE", enable_val: [{ value: "1" }] },
+      ],
+    });
+    const { capabilities } = decodeBufferToTelemetry(
+      { 8: 10, 34: 2, 103: 20, 33135: 0, 33133: 0 },
+      rmap,
+      { agua_brand: "nobis" },
+    );
+    expect(capabilities.ducts.map((d) => d.id)).toEqual(["SX", "DX"]);
+
+    const evEnabled = evaluateBuffer({ 33135: 1, 33133: 1 }, rmap);
+    const capsEnabled = detectCapabilities(rmap, evEnabled, { agua_brand: "nobis" });
+    expect(capsEnabled.ducts.map((d) => d.id)).toEqual(["SX", "DX"]);
+  });
 });

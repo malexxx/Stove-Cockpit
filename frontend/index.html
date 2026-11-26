@@ -45,7 +45,7 @@
     <!-- GAUCHE : Autonomie Trémie (Conteneur uniquement) + Météo Extérieure Cliquables -->
     <div class="flex items-center gap-2 sm:gap-3">
       <div class="flex items-center bg-gray-950/80 border border-gray-800 rounded-lg shadow-inner overflow-hidden text-xs">
-        <button type="button" id="hdr-hopper-pill" data-requires="container" onclick="switchTab('tab-pellets')"
+        <button type="button" id="hdr-hopper-pill" data-requires="container" onclick="handleHeaderHopperClick()"
           class="flex items-center gap-1.5 px-2.5 py-1.5 hover:bg-gray-800/90 transition cursor-pointer select-none border-r border-gray-800"
           title="Stock de granulés • Cliquer pour afficher le détail Pellets">
           <span class="text-sm">🪵</span>
@@ -129,6 +129,19 @@
       </div>
     </div>
   </header>
+
+  <!-- BANDEAU D'ALERTE CRITIQUE DYNAMIQUE (SOUS LE HEADER POUR RESPECTER LE SAFE-AREA SMARTPHONE) -->
+  <div id="critical-alert-banner"
+    class="hidden bg-rose-950/95 border-b border-rose-600 px-4 py-2.5 text-xs text-rose-100 flex flex-wrap items-center justify-between gap-2 animate-pulse">
+    <div class="flex items-center gap-2 font-bold">
+      <span class="text-base">🚨</span>
+      <span id="critical-alert-text">ALERTE SÉCURITÉ ACTIVE SUR LE POÊLE</span>
+    </div>
+    <button id="critical-alert-btn" onclick="resetStoveAlarm()"
+      class="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold border border-rose-400 transition flex items-center gap-1.5 shadow">
+      <span>🛡️</span><span id="critical-alert-btn-text">Guide Réarmement (P3)</span>
+    </button>
+  </div>
 
   <!-- ===================================================================== -->
   <!-- BARRE DE NAVIGATION PC                                                -->

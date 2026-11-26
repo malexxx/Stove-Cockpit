@@ -70,13 +70,15 @@ function toggleSettingsAccordion(accId, forceOpen = false) {
 }
 
 function _isSettingsAccordionAllowedInMode(item) {
-  const appMode = window.stoveProvider ? window.stoveProvider.getMode() : "standalone";
+  const pm = window.stoveProvider;
+  const appMode = pm ? pm.getMode() : "standalone";
   const isContainer = appMode === "container";
-  const servedByContainer = Boolean(window.stoveProvider?.isServedByContainer?.());
+  const servedByContainer = Boolean(pm?.isServedByContainer?.());
+  const hidePlusTeaser = isContainer || servedByContainer || Boolean(pm?.hasEverSyncedContainer?.());
   const req = item.dataset.requires || "";
   if (req === "container" && !isContainer) return false;
   if (req === "container-host" && !servedByContainer) return false;
-  if (req === "standalone-only" && isContainer) return false;
+  if (req === "standalone-only" && hidePlusTeaser) return false;
   if (req === "client-app" && servedByContainer) return false;
   if (item.dataset.accId === "zones") {
     const caps = typeof getActiveCapabilities === "function" ? getActiveCapabilities() : null;

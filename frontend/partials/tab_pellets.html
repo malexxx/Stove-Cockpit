@@ -28,15 +28,34 @@
                 class="text-[10px] px-2 py-0.5 rounded bg-[#3b2014] hover:bg-[#4d2c1c] text-[#e8b693] border border-[#6e3b1f] font-semibold transition"
                 title="Ajouter 1 sac de 15 kg (+43% dans la trémie de 35 kg)">+1 Sac</button>
               <button onclick="refillHopper(2)"
+                class="text-[10px] px-2 py-0.5 rounded bg-[#442617] hover:bg-[#57311e] text-[#f0c4a3] border border-[#784122] font-semibold transition"
+                title="Ajouter 2 sacs de 15 kg (30 kg / +86% dans la trémie de 35 kg)">+2 Sacs</button>
+              <button onclick="refillHopper('full')"
                 class="text-[10px] px-2 py-0.5 rounded bg-[#4d2c1c] hover:bg-[#5f3622] text-[#f5d0b5] border border-[#854726] font-semibold transition"
-                title="Remplir la trémie à 100% (35 kg = ~2.3 sacs de 15 kg)">100%</button>
+                title="Remplir la trémie à ras bord 100% (35 kg)">100%</button>
+            </div>
+          </div>
+
+          <!-- Bannière de confirmation rechargement lorsque le niveau est en attente (?) -->
+          <div id="pellet-refill-confirm-banner" class="hidden rounded-lg bg-amber-950/70 border border-amber-500/70 p-2.5 space-y-2 text-xs">
+            <div class="font-semibold text-amber-300 flex items-center gap-1.5">
+              <span class="animate-pulse">?</span>
+              <span>Rechargement à confirmer (ouverture trappe ou alarme granulés)</span>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <button type="button" onclick="confirmHopperRefillChoice(1)"
+                class="px-2.5 py-1 rounded bg-[#3b2014] hover:bg-[#4d2c1c] text-[#f5d0b5] border border-[#854726] text-[11px] font-bold cursor-pointer">+1 Sac (15 kg)</button>
+              <button type="button" onclick="confirmHopperRefillChoice(2)"
+                class="px-2.5 py-1 rounded bg-[#4d2c1c] hover:bg-[#5f3622] text-[#fde2cc] border border-[#96562c] text-[11px] font-bold cursor-pointer">+2 Sacs (30 kg)</button>
+              <button type="button" onclick="confirmHopperRefillChoice('full')"
+                class="px-2.5 py-1 rounded bg-emerald-900/70 hover:bg-emerald-800 text-emerald-100 border border-emerald-600/70 text-[11px] font-bold cursor-pointer">Plein 100% (35 kg)</button>
             </div>
           </div>
 
           <!-- Jauge % et Autonomie -->
           <div class="flex items-baseline justify-between">
             <div class="text-2xl sm:text-3xl font-black text-[#e09f67] tabular-nums">
-              <span id="kpi-hop">--</span> <span class="text-lg font-bold text-[#b46534]">%</span>
+              <span id="kpi-hop">--</span> <span id="kpi-hop-unit" class="text-lg font-bold text-[#b46534]">%</span>
             </div>
             <span class="text-xs text-[#d4976a] font-semibold tabular-nums" id="kpi-hop-autonomy">~--h</span>
           </div>

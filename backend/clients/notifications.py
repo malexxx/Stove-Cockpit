@@ -97,7 +97,7 @@ class NotificationService:
                     self._last_sent_by_key.pop(k, None)
 
         hopper_pct = float(record.get("pellet_hopper_pct") if record.get("pellet_hopper_pct") is not None else 100.0)
-        if hopper_pct <= 20.0:
+        if 0.0 <= hopper_pct <= 20.0:
             kg_left = round((hopper_pct / 100.0) * hopper_cap_kg, 1)
             await self.send_webhook(
                 webhook_url,

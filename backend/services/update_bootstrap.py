@@ -210,6 +210,11 @@ def build_child_env(
         env["NOBIS_ACTIVE_RELEASE_SHA"] = str(rel.get("sha") or "")
         env["NOBIS_ACTIVE_RELEASE_DIR"] = str(target["target_dir"])
         env["NOBIS_ASSET_BUST"] = rel_id
+        rel_fe_dist = os.path.join(target["target_dir"], "frontend_dist")
+        if os.path.isfile(os.path.join(rel_fe_dist, "index.html")):
+            env["STOVE_FRONTEND_DIST"] = rel_fe_dist
+        else:
+            env.pop("STOVE_FRONTEND_DIST", None)
         pydeps_dir = os.path.join(target["target_dir"], "pydeps")
         if os.path.isdir(pydeps_dir):
             existing_pp = env.get("PYTHONPATH", "").strip()
@@ -227,6 +232,7 @@ def build_child_env(
         "NOBIS_ACTIVE_RELEASE_SHA",
         "NOBIS_ACTIVE_RELEASE_DIR",
         "NOBIS_ASSET_BUST",
+        "STOVE_FRONTEND_DIST",
     ):
         env.pop(key, None)
     return env

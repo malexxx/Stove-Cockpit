@@ -26,7 +26,7 @@ export default defineConfig({
   base: "./",
   plugins: [htmlPartialsPlugin()],
   define: {
-    __FRONTEND_VERSION__: JSON.stringify(pkg.version || "0.0.9"),
+    __FRONTEND_VERSION__: JSON.stringify(pkg.version || "0.0.91"),
   },
   resolve: {
     alias: {

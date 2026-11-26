@@ -96,8 +96,28 @@ export class ProviderManager {
     }
   }
 
+  hasEverSyncedContainer() {
+    if (this.servedByContainer || this.mode === "container" || this.mode === "fallback") {
+      return true;
+    }
+    if (this.prefs?.container_ever_synced === "1") {
+      return true;
+    }
+    const url = String(this.prefs?.container_url || "").trim();
+    const tok = String(this.prefs?.container_api_token || "").trim();
+    return Boolean(url && tok);
+  }
+
+  async _markContainerEverSynced() {
+    if (this.servedByContainer) return;
+    if (!this.prefs || typeof this.prefs !== "object") this.prefs = {};
+    if (this.prefs.container_ever_synced === "1") return;
+    this.prefs.container_ever_synced = "1";
+    await savePrefsPatch({ container_ever_synced: "1" }).catch(() => { });
+  }
+
   needsOnboarding() {
-    if (this.servedByContainer) return false;
+    if (this.servedByContainer || this.hasEverSyncedContainer()) return false;
     return !this.prefs.app_mode;
   }
 
@@ -125,6 +145,7 @@ export class ProviderManager {
       if (health.ok) {
         this.mode = "container";
         this._recordBackendVersion(health.data);
+        await this._markContainerEverSynced();
         this._triggerAutoBidirectionalSync();
         return this.mode;
       }
@@ -158,6 +179,7 @@ export class ProviderManager {
       if (health.ok) {
         this.mode = "container";
         this._recordBackendVersion(health.data);
+        await this._markContainerEverSynced();
         this._triggerAutoBidirectionalSync();
         if (this.onStateCallback) {
           this.startLiveUpdates(this.onStateCallback);
@@ -325,6 +347,7 @@ export class ProviderManager {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
       this._recordBackendVersion(data);
+      await this._markContainerEverSynced();
       await this._mirrorContainerSettingsToLocalPrefs(data?.settings);
       this.lastPayload = data;
       return data;
@@ -350,6 +373,7 @@ export class ProviderManager {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
       this._recordBackendVersion(data);
+      await this._markContainerEverSynced();
       this.lastPayload = data;
       return data;
     }
@@ -904,6 +928,7 @@ export class ProviderManager {
       result.pulledWeather = Boolean(needPullWeather && pulled && (pulled.weather_lat || pulled.weather_lon));
     }
 
+    await this._markContainerEverSynced();
     await this._mirrorContainerSettingsToLocalPrefs(remoteSettings);
     if (needPullWeather && !result.pulledWeather && this.hasLocalWeatherConfig()) {
       result.pulledWeather = true;

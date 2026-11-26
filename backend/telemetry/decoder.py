@@ -58,7 +58,8 @@ def compute_hopper_runway(hopper_pct: float, weather: dict[str, Any], settings: 
     except (ValueError, TypeError):
         cur_stock_bags = 40.0
     hopper_cap_kg = get_hopper_capacity_kg(s_dict)
-    total_kg_avail = (cur_stock_bags * PELLET_BAG_WEIGHT_KG) + (hopper_pct / 100.0 * hopper_cap_kg)
+    effective_hopper_pct = max(0.0, float(hopper_pct))
+    total_kg_avail = (cur_stock_bags * PELLET_BAG_WEIGHT_KG) + (effective_hopper_pct / 100.0 * hopper_cap_kg)
     return calculate_forecast_runway(total_kg_avail, weather)
 
 
@@ -174,10 +175,51 @@ def _compute_hopper_level(
     consumed_kg: float,
     comm_mode: str,
     hopper_capacity_kg: float = 35.0,
+    *,
+    popup_pellet_open: int = 0,
+    alarm_code: int = 0,
 ) -> float:
-    prev_hopper = float(prev.get("pellet_hopper_pct") or 78.0)
+    raw_prev = prev.get("pellet_hopper_pct")
+    prev_hopper = 78.0 if raw_prev is None else float(raw_prev)
     prev_pellet_empty = int(prev.get("popup_pellet_empty") or 0)
+    prev_pellet_open = int(prev.get("popup_pellet_open") or 0)
+    prev_alarm = int(prev.get("alarm_code") or 0)
     delta_pct = (consumed_kg / max(1.0, hopper_capacity_kg)) * 100.0
+
+    lid_opened_now = (popup_pellet_open == 1 or alarm_code == 16) and not (prev_pellet_open == 1 or prev_alarm == 16)
+    if lid_opened_now:
+        if prev_hopper >= 0:
+            db_log(
+                "INFO",
+                "PELLET",
+                "Ouverture de la trappe granulés détectée : niveau trémie en attente de confirmation utilisateur (?)",
+                comm_mode,
+            )
+        return -1.0
+
+    pellet_alarm_now = alarm_code in (2, 3) and prev_alarm not in (2, 3)
+    if pellet_alarm_now:
+        if prev_hopper >= 0:
+            db_log(
+                "INFO",
+                "PELLET",
+                f"Alarme AL0{alarm_code} détectée : niveau trémie en attente de confirmation utilisateur (?)",
+                comm_mode,
+            )
+        return -1.0
+
+    if prev_pellet_empty and not popup_pellet_empty:
+        if prev_hopper >= 0:
+            db_log(
+                "INFO",
+                "PELLET",
+                "Sonde réserve granulés réinitialisée : rechargement trémie en attente de confirmation utilisateur (?)",
+                comm_mode,
+            )
+        return -1.0
+
+    if prev_hopper < 0:
+        return -1.0
 
     if popup_pellet_empty:
         if not prev_pellet_empty:
@@ -190,14 +232,6 @@ def _compute_hopper_level(
             return 12.0
         return round(max(0.0, min(12.0, prev_hopper - delta_pct)), 1)
 
-    if prev_pellet_empty:
-        db_log(
-            "INFO",
-            "PELLET",
-            f"Sonde physique réserve granulés réinitialisée (recharge détectée) : recalibrage automatique de la trémie à 100% ({int(hopper_capacity_kg)} kg)",
-            comm_mode,
-        )
-        return 100.0
     return round(max(0.0, min(100.0, prev_hopper - delta_pct)), 1)
 
 
@@ -331,6 +365,7 @@ def decode_hardware_buffer(
     popup_flags = int(raw_buf.get(115, 0))
     dyn_pellet_low = _dyn("pellet_reserve_low")
     popup_pellet_empty = 1 if ((popup_flags & 64) or (dyn_pellet_low is not None and int(round(float(dyn_pellet_low))) == 1)) else 0
+    popup_pellet_open = 1 if (popup_flags & 8) else 0
 
     temp_amb, temp_amb_sp = _resolve_primary_temperatures(caps, _dyn, raw_buf, prev, r_val)
     temp_fumes = float(_dyn("temp_fumes", raw_buf.get(2, prev.get("temp_fumes") or 25.0)))
@@ -367,7 +402,15 @@ def decode_hardware_buffer(
     if dyn_hopper_pct is not None:
         hopper = round(max(0.0, min(100.0, float(dyn_hopper_pct))), 1)
     else:
-        hopper = _compute_hopper_level(popup_pellet_empty, prev, consumed_kg, comm_mode, hopper_capacity_kg=hopper_cap_kg)
+        hopper = _compute_hopper_level(
+            popup_pellet_empty,
+            prev,
+            consumed_kg,
+            comm_mode,
+            hopper_capacity_kg=hopper_cap_kg,
+            popup_pellet_open=popup_pellet_open,
+            alarm_code=alarm_code,
+        )
     runway_days = compute_hopper_runway(hopper, weather, settings=settings)
 
     flame_delta_avg, dep_delta_avg = compute_stability_deltas(
@@ -449,7 +492,7 @@ def decode_hardware_buffer(
         "popup_flags": popup_flags,
         "popup_door_open": 1 if (popup_flags & 16) else 0,
         "popup_pellet_empty": popup_pellet_empty,
-        "popup_pellet_open": 1 if (popup_flags & 8) else 0,
+        "popup_pellet_open": popup_pellet_open,
         "popup_pa_fault": 1 if (popup_flags & 4) else 0,
         "popup_tcj_fault": 1 if (popup_flags & 2) else 0,
         "popup_tck_fault": 1 if (popup_flags & 1) else 0,

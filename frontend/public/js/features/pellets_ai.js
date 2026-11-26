@@ -2,31 +2,132 @@
 // FEATURE GRANULÉS & IA — TRÉMIE 35 KG, QUALITÉ COMBUSTIBLE & TARAGES MÉLANGE P/A
 // =============================================================================
 
-function refillHopper(bagsAdded = 2) {
-  const isOneBag = Number(bagsAdded) === 1;
+let _hopperConfirmPromptShown = false;
+
+function _buildRefillPayload(bagsOrFull) {
+  const capKg = Number(HOPPER_CAPACITY_KG || 35);
+  const rawCur = Number(latestData?.pellet_hopper_pct);
+  const basePct = Number.isFinite(rawCur) && rawCur >= 0 ? rawCur : 0;
+  const bagWeight = Number(typeof BAG_WEIGHT_KG !== "undefined" ? BAG_WEIGHT_KG : 15);
+  if (bagsOrFull === "full") {
+    const fullBags = Math.round((capKg / bagWeight) * 100) / 100;
+    return { target_pct: 100.0, level_pct: 100.0, bags_added: fullBags };
+  }
+  const bagsNum = Number(bagsOrFull) === 1 ? 1 : 2;
+  const addedPct = ((bagsNum * bagWeight) / Math.max(1, capKg)) * 100.0;
+  const targetPct = Math.min(100.0, Math.round((basePct + addedPct) * 10) / 10);
+  return { target_pct: targetPct, level_pct: targetPct, bags_added: bagsNum };
+}
+
+async function confirmHopperRefillChoice(bagsOrFull) {
+  if (typeof closeActionModal === "function") closeActionModal();
+  const payload = _buildRefillPayload(bagsOrFull);
+  try {
+    const j = await window.stoveProvider.refillHopper(payload);
+    _hopperConfirmPromptShown = false;
+    await refreshLatestOnly();
+    const capKg = j.hopper_capacity_kg ?? HOPPER_CAPACITY_KG;
+    const stockBags = j.pellet_bags_stock ?? j.bags_stock ?? "--";
+    showToast(`Trémie confirmée à ${j.pellet_hopper_pct}% (${capKg} kg max) — Stock restant : ${stockBags} sacs`);
+  } catch (e) {
+    showToast("Erreur confirmation trémie : " + (e?.message || "Échec"), true);
+  }
+}
+
+function openHopperRefillConfirmModal(reason = "") {
+  const capKg = Number(HOPPER_CAPACITY_KG || 35);
+  const bagWeight = Number(typeof BAG_WEIGHT_KG !== "undefined" ? BAG_WEIGHT_KG : 15);
+  const pct1 = Math.min(100, Math.round((bagWeight / Math.max(1, capKg)) * 100));
+  const pct2 = Math.min(100, Math.round(((bagWeight * 2) / Math.max(1, capKg)) * 100));
+  const reasonHtml = reason
+    ? `<p class="text-[11px] text-amber-300/90">${escapeHtml(reason)}</p>`
+    : `<p class="text-[11px] text-gray-300">Une ouverture de trappe ou une alarme granulés (AL02/AL03) a été détectée. Confirmez la quantité rechargée pour recalibrer la jauge :</p>`;
+
   openActionModal({
-    title: isOneBag ? "🌾 Ajout +1 Sac (15 kg / +43%)" : "🌾 Trémie Pleine 100% (35 kg / ~2.3 sacs)",
-    message: isOneBag
-      ? "Ajouter 1 sac de 15 kg (+42.9% dans la trémie de 35 kg) et décrémenter le stock de granulés de 1 sac ?"
-      : "Remplir la trémie à 100 % (capacité certifiée 35 kg) et mettre à jour le stock de sacs de 15 kg ?",
-    confirmText: isOneBag ? "+1 Sac (15 kg)" : "Trémie Pleine (35 kg)",
+    title: "🪵 Confirmer le rechargement de la trémie",
+    htmlContent: `
+      <div class="space-y-3 text-xs">
+        ${reasonHtml}
+        <div class="grid grid-cols-1 gap-2">
+          <button type="button" onclick="confirmHopperRefillChoice(1)"
+            class="w-full px-3 py-2.5 rounded-xl bg-[#3b2014] hover:bg-[#4d2c1c] text-[#f5d0b5] border border-[#854726] font-bold flex items-center justify-between transition cursor-pointer">
+            <span>🌾 +1 Sac (${bagWeight} kg)</span>
+            <span class="text-[11px] text-amber-300">+${pct1}%</span>
+          </button>
+          <button type="button" onclick="confirmHopperRefillChoice(2)"
+            class="w-full px-3 py-2.5 rounded-xl bg-[#4d2c1c] hover:bg-[#5f3622] text-[#fde2cc] border border-[#96562c] font-bold flex items-center justify-between transition cursor-pointer">
+            <span>🌾🌾 +2 Sacs (${bagWeight * 2} kg)</span>
+            <span class="text-[11px] text-amber-300">+${pct2}%</span>
+          </button>
+          <button type="button" onclick="confirmHopperRefillChoice('full')"
+            class="w-full px-3 py-2.5 rounded-xl bg-emerald-900/60 hover:bg-emerald-800/70 text-emerald-100 border border-emerald-600/70 font-bold flex items-center justify-between transition cursor-pointer">
+            <span>🪵 Plein à ras bord (${capKg} kg)</span>
+            <span class="text-[11px] text-emerald-300">100%</span>
+          </button>
+        </div>
+      </div>
+    `,
+    confirmText: "Laisser en ? (Plus tard)",
+    showCancel: false,
+    onConfirm: () => { },
+  });
+}
+
+function maybePromptHopperRefillConfirm() {
+  if (_hopperConfirmPromptShown) return;
+  if (!window.stoveProvider?.isContainerActive?.()) return;
+  const modal = document.getElementById("action-modal");
+  if (modal && !modal.classList.contains("hidden")) return;
+  _hopperConfirmPromptShown = true;
+  const stAlarm = Number(latestData?.alarm_code ?? 0);
+  const lidOpen = Boolean(latestData?.popup_pellet_open);
+  let reason = "";
+  if (lidOpen) {
+    reason = "Ouverture de la trappe à granulés détectée. Quelle quantité avez-vous ajoutée ?";
+  } else if (stAlarm === 2 || stAlarm === 3) {
+    reason = `Alarme AL0${stAlarm} détectée. Confirmez la quantité rechargée pour réinitialiser la jauge :`;
+  }
+  openHopperRefillConfirmModal(reason);
+}
+
+function resetHopperRefillPromptFlag() {
+  _hopperConfirmPromptShown = false;
+}
+
+function handleHeaderHopperClick() {
+  const rawPct = latestData?.pellet_hopper_pct;
+  const parsed = (rawPct === null || rawPct === undefined || rawPct === "") ? NaN : Number(rawPct);
+  if (window.stoveProvider?.isContainerActive?.() && (!Number.isFinite(parsed) || parsed < 0)) {
+    openHopperRefillConfirmModal();
+    return;
+  }
+  switchTab("tab-pellets");
+}
+
+function refillHopper(bagsAdded = "full") {
+  const isOneBag = Number(bagsAdded) === 1;
+  const isTwoBags = Number(bagsAdded) === 2;
+  const capKg = Number(HOPPER_CAPACITY_KG || 35);
+  const bagWeight = Number(typeof BAG_WEIGHT_KG !== "undefined" ? BAG_WEIGHT_KG : 15);
+  const choice = isOneBag ? 1 : (isTwoBags ? 2 : "full");
+  let title = `🌾 Trémie Pleine 100% (${capKg} kg)`;
+  let message = `Remplir la trémie à 100 % (capacité ${capKg} kg) et mettre à jour le stock de sacs de ${bagWeight} kg ?`;
+  let confirmText = `Trémie Pleine (${capKg} kg)`;
+  if (isOneBag) {
+    title = `🌾 Ajout +1 Sac (${bagWeight} kg)`;
+    message = `Ajouter 1 sac de ${bagWeight} kg dans la trémie de ${capKg} kg et décrémenter le stock de 1 sac ?`;
+    confirmText = `+1 Sac (${bagWeight} kg)`;
+  } else if (isTwoBags) {
+    title = `🌾🌾 Ajout +2 Sacs (${bagWeight * 2} kg)`;
+    message = `Ajouter 2 sacs (${bagWeight * 2} kg) dans la trémie de ${capKg} kg et décrémenter le stock de 2 sacs ?`;
+    confirmText = `+2 Sacs (${bagWeight * 2} kg)`;
+  }
+  openActionModal({
+    title,
+    message,
+    confirmText,
     onConfirm: async () => {
-      const addedPct = (15.0 / HOPPER_CAPACITY_KG) * 100.0;
-      const targetPct = isOneBag
-        ? Math.min(100.0, Number(latestData.pellet_hopper_pct ?? 50) + addedPct)
-        : 100.0;
-      const payload = isOneBag
-        ? { target_pct: targetPct, level_pct: targetPct, bags_added: 1 }
-        : { target_pct: 100.0, level_pct: 100.0, bags_added: 2.33 };
-      try {
-        const j = await window.stoveProvider.refillHopper(payload);
-        await refreshLatestOnly();
-        const capKg = j.hopper_capacity_kg ?? HOPPER_CAPACITY_KG;
-        const stockBags = j.pellet_bags_stock ?? j.bags_stock ?? "--";
-        showToast(`Trémie à ${j.pellet_hopper_pct}% (${capKg} kg max) — Stock restant : ${stockBags} sacs`);
-      } catch (e) {
-        showToast("Erreur recharge trémie : " + (e?.message || "Échec"), true);
-      }
+      await confirmHopperRefillChoice(choice);
     }
   });
 }

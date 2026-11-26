@@ -149,7 +149,8 @@ async def api_refill_hopper(payload: Annotated[RefillHopperPayload | None, Body(
         conn = get_db(active_mode)
         try:
             last_row = conn.execute("SELECT id, pellet_hopper_pct FROM telemetry ORDER BY epoch DESC LIMIT 1").fetchone()
-            prev_pct = float(last_row["pellet_hopper_pct"]) if last_row else 50.0
+            raw_prev = last_row["pellet_hopper_pct"] if last_row and last_row["pellet_hopper_pct"] is not None else 50.0
+            prev_pct = max(0.0, float(raw_prev))
             if payload is not None and payload.level_pct is not None:
                 new_pct = round(min(100.0, max(0.0, float(payload.level_pct))), 1)
             elif payload is not None and "target_pct" in payload.model_fields_set:
@@ -163,7 +164,7 @@ async def api_refill_hopper(payload: Annotated[RefillHopperPayload | None, Body(
 
             if last_row:
                 conn.execute(
-                    "UPDATE telemetry SET pellet_hopper_pct = ?, popup_pellet_empty = 0 WHERE id = ?",
+                    "UPDATE telemetry SET pellet_hopper_pct = ?, popup_pellet_empty = 0, popup_pellet_open = 0 WHERE id = ?",
                     (new_pct, last_row["id"]),
                 )
                 conn.commit()
@@ -203,7 +204,7 @@ async def api_refill_hopper(payload: Annotated[RefillHopperPayload | None, Body(
         try:
             new_last = conn.execute("SELECT id FROM telemetry ORDER BY epoch DESC LIMIT 1").fetchone()
             if new_last:
-                conn.execute("UPDATE telemetry SET pellet_hopper_pct = ?, popup_pellet_empty = 0 WHERE id = ?", (new_pct, new_last["id"]))
+                conn.execute("UPDATE telemetry SET pellet_hopper_pct = ?, popup_pellet_empty = 0, popup_pellet_open = 0 WHERE id = ?", (new_pct, new_last["id"]))
                 conn.commit()
         finally:
             conn.close()

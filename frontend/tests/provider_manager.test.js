@@ -74,7 +74,7 @@ describe("ProviderManager", () => {
     });
 
     await pm.resolveActiveMode();
-    expect(pm.getFrontendVersion()).toBe("v0.0.9");
+    expect(pm.getFrontendVersion()).toBe("v0.0.91");
     expect(pm.getBackendVersion()).toBe("v2.9.0");
     expect(pm.getAppVersion()).toBe("v2.9.0");
 
@@ -85,7 +85,7 @@ describe("ProviderManager", () => {
     pm.prefs.app_mode = "demo";
     await pm.resolveActiveMode();
     expect(pm.getBackendVersion()).toBeNull();
-    expect(pm.getAppVersion()).toBe("v0.0.9");
+    expect(pm.getAppVersion()).toBe("v0.0.91");
   });
 
   it("synchronise automatiquement Cloud & Météo de manière bidirectionnelle (téléphone <-> conteneur)", async () => {
@@ -297,6 +297,31 @@ describe("ProviderManager", () => {
     expect(pm.container.baseUrl).toBe("http://192.168.1.50:8080");
     expect(res.mode).toBe("container");
     expect(pm.isContainerActive()).toBe(true);
+    pingSpy.mockRestore();
+  });
+
+  it("mémorise la première synchronisation conteneur (hasEverSyncedContainer) même après retour en standalone", async () => {
+    const pm = new ProviderManager();
+    pm.prefs = { app_mode: "standalone" };
+    await pm.resolveActiveMode();
+    expect(pm.hasEverSyncedContainer()).toBe(false);
+
+    const pingSpy = vi.spyOn(pm.container, "pingHealth").mockResolvedValue({
+      ok: true,
+      data: { status: "healthy", version: "0.0.9" },
+    });
+    await pm.saveSettings({
+      app_mode: "container",
+      container_url: "http://192.168.1.50:8080",
+      container_api_token: "tok-mob",
+    });
+    expect(pm.prefs.container_ever_synced).toBe("1");
+    expect(pm.hasEverSyncedContainer()).toBe(true);
+
+    await pm.saveSettings({ app_mode: "standalone" });
+    expect(pm.getMode()).toBe("standalone");
+    expect(pm.hasEverSyncedContainer()).toBe(true);
+    expect(pm.needsOnboarding()).toBe(false);
     pingSpy.mockRestore();
   });
 });

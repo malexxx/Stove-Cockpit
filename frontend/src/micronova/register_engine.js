@@ -116,8 +116,8 @@ function isRegisterEnabled(key, evaluated) {
   if (String(meta.reg_type || "").toUpperCase() !== "ENABLE") return true;
   if (meta.value === undefined || meta.value === null) return true;
   if (Array.isArray(meta.enable_val) && meta.enable_val.length > 0) {
-    const allowed = new Set(meta.enable_val.map((d) => d?.value));
-    return allowed.has(meta.value);
+    const allowed = new Set(meta.enable_val.map((d) => Number(d?.value)));
+    return allowed.has(Number(meta.value));
   }
   return Math.round(Number(meta.value)) === 1;
 }
@@ -341,7 +341,7 @@ export function inferNormalizedStatusCode(statusDesc, rawStatus) {
 
 export function decodeBufferToTelemetry(rawBuf, registerMap, settings = {}, weather = {}, stoveName = "") {
   const ev = evaluateBuffer(rawBuf, registerMap || {});
-  const caps = detectCapabilities(registerMap || {}, ev, settings);
+  const caps = detectCapabilities(registerMap || {}, {}, settings);
   const dyn = (canon, fallback = null) => {
     const [, entry] = resolveCanonical(canon, ev, registerMap);
     return entry && entry.value !== undefined && entry.value !== null ? entry.value : fallback;

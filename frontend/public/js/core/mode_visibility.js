@@ -15,6 +15,7 @@ function applyModeVisibility() {
   const mode = pm ? pm.getMode() : "standalone";
   const isContainer = mode === "container";
   const servedByContainer = Boolean(pm?.isServedByContainer?.());
+  const hidePlusTeaser = isContainer || servedByContainer || Boolean(pm?.hasEverSyncedContainer?.());
 
   document.querySelectorAll('[data-requires="container"]').forEach((el) => {
     el.classList.toggle("hidden", !isContainer);
@@ -23,7 +24,7 @@ function applyModeVisibility() {
     el.classList.toggle("hidden", !servedByContainer);
   });
   document.querySelectorAll('[data-requires="standalone-only"]').forEach((el) => {
-    el.classList.toggle("hidden", isContainer);
+    el.classList.toggle("hidden", hidePlusTeaser);
   });
   document.querySelectorAll('[data-requires="client-app"]').forEach((el) => {
     el.classList.toggle("hidden", servedByContainer);
@@ -50,7 +51,7 @@ function applyModeVisibility() {
       if (typeof switchTab === "function") switchTab("tab-control");
       break;
     }
-    if (id === "tab-plus-teaser" && isContainer) {
+    if (id === "tab-plus-teaser" && hidePlusTeaser) {
       sec.style.display = "none";
       if (typeof switchTab === "function") switchTab("tab-control");
       break;

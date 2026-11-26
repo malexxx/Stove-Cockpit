@@ -179,7 +179,10 @@ function applyDashboardState(data, updateSeries = true) {
   document.getElementById("kpi-sil").textContent = silVal ? "ON" : "OFF";
 
   // Carte 4 : Pellets - Jauge visuelle, Consommations (Jour, Semaine 7j, Mois 30j) & Stock
-  const hopPct = Number(latestData.pellet_hopper_pct ?? 78);
+  const rawHopPct = latestData.pellet_hopper_pct;
+  const parsedHopPct = (rawHopPct === null || rawHopPct === undefined || rawHopPct === "") ? NaN : Number(rawHopPct);
+  const isHopUnknown = !Number.isFinite(parsedHopPct) || parsedHopPct < 0;
+  const hopPct = isHopUnknown ? 0 : parsedHopPct;
   const rateKgh = Number(latestData.pellet_rate_kgh ?? 0);
   const dailyKg = Number(latestData.pellet_daily_kg ?? 0);
   const weeklyKg = Math.max(dailyKg, Number(latestData.conso_week_kg ?? (latestData.consumption_stats?.conso_week_kg ?? 0)));
@@ -192,7 +195,16 @@ function applyDashboardState(data, updateSeries = true) {
   const weeklyCostEur = (weeklyKg * kgPriceEur).toFixed(2);
   const monthlyCostEur = (monthlyKg * kgPriceEur).toFixed(2);
 
-  document.getElementById("kpi-hop").textContent = hopPct;
+  const kpiHopEl = document.getElementById("kpi-hop");
+  const kpiHopUnitEl = document.getElementById("kpi-hop-unit");
+  const refillBannerEl = document.getElementById("pellet-refill-confirm-banner");
+  if (kpiHopEl) {
+    kpiHopEl.textContent = isHopUnknown ? "?" : Math.round(hopPct);
+    kpiHopEl.className = isHopUnknown ? "text-amber-400 animate-pulse" : "";
+  }
+  if (kpiHopUnitEl) kpiHopUnitEl.classList.toggle("hidden", isHopUnknown);
+  if (refillBannerEl) refillBannerEl.classList.toggle("hidden", !isHopUnknown);
+
   document.getElementById("kpi-kgh").textContent = rateKgh;
   document.getElementById("kpi-daily-kg").textContent = dailyKg.toFixed(1);
   const costEl = document.getElementById("kpi-daily-cost");
@@ -214,21 +226,21 @@ function applyDashboardState(data, updateSeries = true) {
   if (chrEl) chrEl.textContent = chrVal ? "ON" : "OFF";
 
   const hopBar = document.getElementById("kpi-hop-bar");
-  hopBar.style.width = `${Math.max(0, Math.min(100, hopPct))}%`;
-  hopBar.className = "h-full transition-all duration-500 " + (hopPct <= 15 ? "bg-rose-500" : (hopPct <= 35 ? "bg-amber-500" : "bg-[#96562c]"));
+  hopBar.style.width = isHopUnknown ? "0%" : `${Math.max(0, Math.min(100, hopPct))}%`;
+  hopBar.className = "h-full transition-all duration-500 " + (isHopUnknown ? "bg-amber-500" : (hopPct <= 15 ? "bg-rose-500" : (hopPct <= 35 ? "bg-amber-500" : "bg-[#96562c]")));
 
   const kgRemaining = (hopPct / 100.0) * HOPPER_CAPACITY_KG;
   const effectiveRate = rateKgh > 0.1 ? rateKgh : 0.95;
   const hoursLeft = Math.round(kgRemaining / effectiveRate);
-  document.getElementById("kpi-hop-autonomy").textContent = `~${hoursLeft}h (${kgRemaining.toFixed(1)}kg)`;
+  document.getElementById("kpi-hop-autonomy").textContent = isHopUnknown
+    ? "En attente de confirmation"
+    : `~${hoursLeft}h (${kgRemaining.toFixed(1)}kg)`;
 
   // Mise à jour de l'autonomie dans la bulle Météo/Pellets du Header principal
   const hdrHopperEl = document.getElementById("hdr-pellet-hopper");
   if (hdrHopperEl) {
-    const rawHopPct = latestData.pellet_hopper_pct;
-    const parsedHopPct = (rawHopPct === null || rawHopPct === undefined || rawHopPct === "") ? NaN : Number(rawHopPct);
     const baseHopCls = "font-bold text-xs sm:text-sm tabular-nums";
-    if (!Number.isFinite(parsedHopPct) || parsedHopPct < 0) {
+    if (isHopUnknown) {
       hdrHopperEl.textContent = "?";
       hdrHopperEl.className = `${baseHopCls} text-amber-400 animate-pulse`;
     } else if (parsedHopPct > 50) {
@@ -241,6 +253,14 @@ function applyDashboardState(data, updateSeries = true) {
       hdrHopperEl.textContent = `${Math.round(parsedHopPct)}%`;
       hdrHopperEl.className = `${baseHopCls} text-rose-400`;
     }
+  }
+
+  if (isHopUnknown) {
+    if (typeof maybePromptHopperRefillConfirm === "function") {
+      maybePromptHopperRefillConfirm();
+    }
+  } else if (typeof resetHopperRefillPromptFlag === "function") {
+    resetHopperRefillPromptFlag();
   }
 
   // Prédiction Runway Stock (DJU & Météo)

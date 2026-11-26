@@ -439,3 +439,111 @@ class TestTelemetryRegressions(BugBountyTestCase):
                     gw_conn.commit()
                 finally:
                     gw_conn.close()
+
+    def test_bb15_hopper_requires_confirmation_after_al02_or_lid_open(self):
+        from telemetry.decoder import _compute_hopper_level, compute_hopper_runway
+
+        # 1. Ouverture trappe granulés -> passe à -1.0 ("?")
+        lvl_lid = _compute_hopper_level(
+            0,
+            {"pellet_hopper_pct": 64.0, "popup_pellet_open": 0, "alarm_code": 0},
+            0.2,
+            "simulation",
+            hopper_capacity_kg=35.0,
+            popup_pellet_open=1,
+            alarm_code=0,
+        )
+        self.assertEqual(lvl_lid, -1.0)
+
+        # Reste à -1.0 tant que l'utilisateur n'a pas confirmé
+        lvl_stay = _compute_hopper_level(
+            0,
+            {"pellet_hopper_pct": -1.0, "popup_pellet_open": 1, "alarm_code": 0},
+            0.2,
+            "simulation",
+            hopper_capacity_kg=35.0,
+            popup_pellet_open=0,
+            alarm_code=0,
+        )
+        self.assertEqual(lvl_stay, -1.0)
+
+        # 2. Alarme AL02 (manque allumage) -> passe à -1.0 ("?") et y reste après acquittement
+        lvl_al02 = _compute_hopper_level(
+            0,
+            {"pellet_hopper_pct": 42.0, "popup_pellet_open": 0, "alarm_code": 0},
+            0.0,
+            "simulation",
+            hopper_capacity_kg=35.0,
+            popup_pellet_open=0,
+            alarm_code=2,
+        )
+        self.assertEqual(lvl_al02, -1.0)
+
+        lvl_after_al02 = _compute_hopper_level(
+            0,
+            {"pellet_hopper_pct": -1.0, "popup_pellet_open": 0, "alarm_code": 2},
+            0.0,
+            "simulation",
+            hopper_capacity_kg=35.0,
+            popup_pellet_open=0,
+            alarm_code=0,
+        )
+        self.assertEqual(lvl_after_al02, -1.0)
+
+        # 3. Réinitialisation sonde réserve vide -> -1.0 (plus de passage auto à 100%)
+        lvl_empty_clear = _compute_hopper_level(
+            0,
+            {"pellet_hopper_pct": 12.0, "popup_pellet_empty": 1, "alarm_code": 0},
+            0.0,
+            "simulation",
+            hopper_capacity_kg=35.0,
+        )
+        self.assertEqual(lvl_empty_clear, -1.0)
+
+        # compute_hopper_runway borne -1.0 à 0.0 pour ne pas soustraire du stock de sacs
+        self.assertEqual(
+            compute_hopper_runway(-1.0, {}, {"pellet_bags_stock": "10", "hopper_capacity_kg": "35"}),
+            compute_hopper_runway(0.0, {}, {"pellet_bags_stock": "10", "hopper_capacity_kg": "35"}),
+        )
+
+        # 4. Confirmation via /api/refill-hopper depuis -1.0 (1 sac = 42.9%, 2 sacs = 85.7%, plein = 100%)
+        with temporary_settings({"comm_mode": "simulation", "hopper_capacity_kg": "35"}):
+            sconn = get_db("simulation")
+            row = sconn.execute(
+                "SELECT id, epoch, pellet_hopper_pct, popup_pellet_open, popup_pellet_empty FROM telemetry ORDER BY epoch DESC LIMIT 1"
+            ).fetchone()
+            self.assertIsNotNone(row)
+            orig = dict(row)
+            try:
+                sconn.execute(
+                    "UPDATE telemetry SET pellet_hopper_pct = -1.0, popup_pellet_open = 1, popup_pellet_empty = 0 WHERE id = ?",
+                    (orig["id"],),
+                )
+                sconn.commit()
+                sconn.close()
+
+                r1 = self.client.post("/api/refill-hopper", json={"bags_added": 1})
+                self.assertEqual(r1.status_code, 200)
+                self.assertAlmostEqual(r1.json()["pellet_hopper_pct"], 42.9, places=1)
+                self.assertEqual(r1.json()["latest"]["popup_pellet_open"], 0)
+
+                sconn_reset = get_db("simulation")
+                last_r = sconn_reset.execute("SELECT id FROM telemetry ORDER BY epoch DESC LIMIT 1").fetchone()
+                sconn_reset.execute("UPDATE telemetry SET pellet_hopper_pct = -1.0 WHERE id = ?", (last_r["id"],))
+                sconn_reset.commit()
+                sconn_reset.close()
+
+                r2 = self.client.post("/api/refill-hopper", json={"bags_added": 2})
+                self.assertEqual(r2.status_code, 200)
+                self.assertAlmostEqual(r2.json()["pellet_hopper_pct"], 85.7, places=1)
+            finally:
+                sconn_restore = get_db("simulation")
+                try:
+                    sconn_restore.execute("DELETE FROM telemetry WHERE id > ?", (orig["id"],))
+                    sconn_restore.execute(
+                        "UPDATE telemetry SET pellet_hopper_pct = ?, popup_pellet_open = ?, popup_pellet_empty = ? WHERE id = ?",
+                        (orig["pellet_hopper_pct"], orig["popup_pellet_open"], orig["popup_pellet_empty"], orig["id"]),
+                    )
+                    sconn_restore.commit()
+                finally:
+                    sconn_restore.close()

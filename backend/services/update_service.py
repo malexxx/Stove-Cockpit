@@ -41,12 +41,22 @@ from services.update_bootstrap import (
 )
 
 DEFAULT_UPDATE_REPO = "malexxx/Stove-Cockpit"
+FRONTEND_DIST_ASSET_NAME = "frontend-dist.tar.gz"
 _REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _APP_VERSION_RE = re.compile(
     r'^APP_VERSION\b[^#\r\n]*?["\']([0-9]+(?:\.[0-9]+)+)["\']',
     re.MULTILINE,
 )
 _SAFE_ID_CHARS_RE = re.compile(r"[^A-Za-z0-9._-]+")
+_HTML_INCLUDE_RE = re.compile(r"<!--\s*@include\s+([a-zA-Z0-9_./-]+)\s*-->")
+_VITE_ENTRY_SCRIPT_RE = re.compile(
+    r'<script\s+type="module"\s+src="/src/main\.js"\s*>\s*</script>',
+    re.IGNORECASE,
+)
+_BUILT_MODULE_SCRIPT_RE = re.compile(
+    r'<script\s+type="module"[^>]*src="\./assets/[^"]+"[^>]*>\s*</script>',
+    re.IGNORECASE,
+)
 
 VALID_CHANNELS: tuple[str, ...] = ("main", "releases")
 ALLOWED_GITHUB_HOSTS: frozenset[str] = frozenset(
@@ -55,6 +65,7 @@ ALLOWED_GITHUB_HOSTS: frozenset[str] = frozenset(
         "github.com",
         "codeload.github.com",
         "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com",
         "raw.githubusercontent.com",
     }
 )
@@ -351,11 +362,17 @@ async def _fetch_latest_release_info(repo: str) -> dict[str, Any]:
         except UpdateUpstreamError:
             remote_sha = ""
     tarball_url = str(data.get("tarball_url") or f"https://api.github.com/repos/{repo}/tarball/{tag}").strip()
+    frontend_dist_url = ""
+    for asset in data.get("assets") or []:
+        if isinstance(asset, dict) and asset.get("name") == FRONTEND_DIST_ASSET_NAME:
+            frontend_dist_url = str(asset.get("browser_download_url") or "").strip()
+            break
     return {
         "remote_version": tag.lstrip("v"),
         "remote_tag": tag,
         "remote_sha": remote_sha,
         "tarball_url": tarball_url,
+        "frontend_dist_url": frontend_dist_url,
         "html_url": str(data.get("html_url") or ""),
         "published_at": str(data.get("published_at") or ""),
         "commit_message": str(data.get("name") or tag).splitlines()[0][:180],
@@ -377,6 +394,7 @@ async def _fetch_branch_commit_info(repo: str, branch: str) -> dict[str, Any]:
         "remote_tag": branch,
         "remote_sha": sha,
         "tarball_url": f"https://api.github.com/repos/{repo}/tarball/{sha}",
+        "frontend_dist_url": "",
         "html_url": str(data.get("html_url") or ""),
         "published_at": str(committer.get("date") or ""),
         "commit_message": first_line,
@@ -440,6 +458,7 @@ async def check_for_updates(channel: str | None = None, data_dir: str | None = N
         "remote_tag": remote["remote_tag"],
         "remote_sha": remote["remote_sha"],
         "tarball_url": remote["tarball_url"],
+        "frontend_dist_url": remote.get("frontend_dist_url", ""),
         "html_url": remote["html_url"],
         "published_at": remote["published_at"],
         "commit_message": remote["commit_message"],
@@ -741,13 +760,112 @@ def _make_release_id(version: str, sha: str, releases_root: str) -> str:
     return candidate
 
 
-def _flatten_monorepo_stage_if_needed(stage_dir: str) -> None:
-    """Aplatit la structure monorepo (backend/ + shared/) si l'archive contient backend/server.py."""
+def _inline_html_partials(html: str, frontend_src_dir: str) -> str:
+    src_root = os.path.realpath(frontend_src_dir)
+
+    def _replace_include(match: re.Match[str]) -> str:
+        rel_path = match.group(1).strip()
+        target = os.path.realpath(os.path.join(src_root, *rel_path.split("/")))
+        if not target.startswith(src_root + os.sep) or not os.path.isfile(target):
+            return match.group(0)
+        with open(target, encoding="utf-8") as fh:
+            return fh.read()
+
+    return _HTML_INCLUDE_RE.sub(_replace_include, html)
+
+
+def _assemble_frontend_dist_fallback(
+    stage_dir: str,
+    frontend_src_dir: str,
+    image_dir: str | None = None,
+) -> bool:
+    """Assemble frontend_dist sans Node.js (HTML + partiels + JS/CSS statiques + bundle Vite de l'image)."""
+    src_index = os.path.join(frontend_src_dir, "index.html")
+    if not os.path.isfile(src_index):
+        return False
+
+    image_fe_dir: str | None = None
+    candidates = []
+    if image_dir:
+        candidates.append(os.path.join(image_dir, "frontend_dist"))
+    candidates.append(config.FRONTEND_DIST_DIR)
+    for cand in candidates:
+        if cand and os.path.isfile(os.path.join(cand, "index.html")):
+            image_fe_dir = cand
+            break
+
+    dst_fe = os.path.join(stage_dir, "frontend_dist")
+    if image_fe_dir:
+        shutil.copytree(image_fe_dir, dst_fe, dirs_exist_ok=True)
+    else:
+        os.makedirs(dst_fe, exist_ok=True)
+
+    public_dir = os.path.join(frontend_src_dir, "public")
+    if os.path.isdir(public_dir):
+        shutil.copytree(public_dir, dst_fe, dirs_exist_ok=True)
+
+    with open(src_index, encoding="utf-8") as fh:
+        raw_html = fh.read()
+    assembled_html = _inline_html_partials(raw_html, frontend_src_dir)
+
+    if image_fe_dir:
+        with open(os.path.join(image_fe_dir, "index.html"), encoding="utf-8") as fh:
+            image_html = fh.read()
+        built_match = _BUILT_MODULE_SCRIPT_RE.search(image_html)
+        if built_match:
+            built_tag = built_match.group(0)
+            assembled_html = _VITE_ENTRY_SCRIPT_RE.sub(lambda _m: built_tag, assembled_html, count=1)
+
+    with open(os.path.join(dst_fe, "index.html"), "w", encoding="utf-8") as fh:
+        fh.write(assembled_html)
+    return True
+
+
+def _stage_frontend_dist(
+    stage_dir: str,
+    image_dir: str | None = None,
+    frontend_tar_path: str | None = None,
+) -> bool:
+    """Prépare <stage_dir>/frontend_dist depuis l'archive release ou par assemblage de repli."""
+    dst_fe = os.path.join(stage_dir, "frontend_dist")
+
+    if frontend_tar_path and os.path.isfile(frontend_tar_path):
+        if os.path.isdir(dst_fe):
+            shutil.rmtree(dst_fe, ignore_errors=True)
+        _extract_tarball_safely(frontend_tar_path, dst_fe)
+        if os.path.isfile(os.path.join(dst_fe, "index.html")):
+            return True
+
+    prebuilt_dist = os.path.join(stage_dir, "frontend", "dist")
+    if os.path.isfile(os.path.join(prebuilt_dist, "index.html")):
+        if os.path.isdir(dst_fe):
+            shutil.rmtree(dst_fe, ignore_errors=True)
+        shutil.move(prebuilt_dist, dst_fe)
+        return True
+
+    frontend_src_dir = os.path.join(stage_dir, "frontend")
+    if os.path.isdir(frontend_src_dir):
+        return _assemble_frontend_dist_fallback(stage_dir, frontend_src_dir, image_dir)
+
+    return os.path.isfile(os.path.join(dst_fe, "index.html"))
+
+
+def _flatten_monorepo_stage_if_needed(
+    stage_dir: str,
+    image_dir: str | None = None,
+    frontend_tar_path: str | None = None,
+) -> bool:
+    """Aplatit la structure monorepo (backend/ + shared/ + frontend_dist) si nécessaire."""
     if os.path.isfile(os.path.join(stage_dir, "server.py")):
-        return
+        if frontend_tar_path or os.path.isdir(os.path.join(stage_dir, "frontend")):
+            ok = _stage_frontend_dist(stage_dir, image_dir=image_dir, frontend_tar_path=frontend_tar_path)
+            shutil.rmtree(os.path.join(stage_dir, "frontend"), ignore_errors=True)
+            return ok
+        return os.path.isfile(os.path.join(stage_dir, "frontend_dist", "index.html"))
+
     backend_dir = os.path.join(stage_dir, "backend")
     if not os.path.isfile(os.path.join(backend_dir, "server.py")):
-        return
+        return False
 
     for entry in os.listdir(backend_dir):
         src = os.path.join(backend_dir, entry)
@@ -760,9 +878,11 @@ def _flatten_monorepo_stage_if_needed(stage_dir: str) -> None:
         shutil.move(src, dst)
     shutil.rmtree(backend_dir, ignore_errors=True)
 
+    frontend_updated = _stage_frontend_dist(stage_dir, image_dir=image_dir, frontend_tar_path=frontend_tar_path)
     frontend_src_dir = os.path.join(stage_dir, "frontend")
     if os.path.isdir(frontend_src_dir):
         shutil.rmtree(frontend_src_dir, ignore_errors=True)
+    return frontend_updated
 
 
 def _stage_and_promote_release(
@@ -773,6 +893,7 @@ def _stage_and_promote_release(
     sha: str,
     channel: str,
     fallback_version: str,
+    frontend_tar_path: str | None = None,
 ) -> dict[str, Any]:
     updates_root = get_updates_root(data_dir)
     releases_root = get_releases_root(data_dir)
@@ -780,7 +901,11 @@ def _stage_and_promote_release(
     stage_dir = tempfile.mkdtemp(prefix="stage_", dir=updates_root)
     try:
         file_count = _extract_tarball_safely(tar_path, stage_dir)
-        _flatten_monorepo_stage_if_needed(stage_dir)
+        frontend_updated = _flatten_monorepo_stage_if_needed(
+            stage_dir,
+            image_dir=image_dir,
+            frontend_tar_path=frontend_tar_path,
+        )
         meta = _validate_staged_release(stage_dir, image_dir)
         py_deps = _sync_python_dependencies_if_needed(stage_dir, image_dir)
         _link_matter_node_modules(stage_dir, image_dir)
@@ -807,6 +932,7 @@ def _stage_and_promote_release(
         "backup_file": backup_file,
         "matter_deps_changed": meta["matter_deps_changed"],
         "py_deps_installed": py_deps,
+        "frontend_updated": bool(frontend_updated),
         "file_count": file_count,
     }
     state = read_update_state(data_dir)
@@ -866,9 +992,24 @@ async def apply_internal_update(
             updates_root = get_updates_root(target_data)
             await asyncio.to_thread(os.makedirs, updates_root, exist_ok=True)
             tar_path = os.path.join(updates_root, f"download_{os.getpid()}.tar.gz")
+            frontend_tar_path: str | None = None
+            fe_dl_path = os.path.join(updates_root, f"frontend_dist_{os.getpid()}.tar.gz")
             try:
                 _set_operation("running", "download", "Téléchargement de la mise à jour depuis GitHub...", 35)
                 await _download_tarball_bounded(check_res["tarball_url"], tar_path)
+
+                fe_url = str(check_res.get("frontend_dist_url") or "").strip()
+                if fe_url:
+                    try:
+                        _set_operation("running", "download", "Téléchargement du bundle frontend...", 55)
+                        await _download_tarball_bounded(fe_url, fe_dl_path)
+                        frontend_tar_path = fe_dl_path
+                    except Exception as fe_exc:
+                        add_container_log(
+                            "WARNING",
+                            "UPDATE",
+                            f"Téléchargement {FRONTEND_DIST_ASSET_NAME} ignoré (repli statique actif) : {fe_exc}",
+                        )
 
                 _set_operation("running", "install", "Extraction, validation et sauvegarde de sécurité...", 75)
                 new_rel = await asyncio.to_thread(
@@ -879,9 +1020,11 @@ async def apply_internal_update(
                     sha=check_res["remote_sha"],
                     channel=check_res["channel"],
                     fallback_version=check_res["remote_version"],
+                    frontend_tar_path=frontend_tar_path,
                 )
             finally:
                 await asyncio.to_thread(_safe_remove_file, tar_path)
+                await asyncio.to_thread(_safe_remove_file, fe_dl_path)
 
             msg = f"Mise à jour {new_rel['display_version']} installée. Redémarrage interne du serveur..."
             _set_operation("restarting", "restart", msg, 100, finished=True)
@@ -900,6 +1043,7 @@ async def apply_internal_update(
                 "backup_file": new_rel.get("backup_file"),
                 "matter_deps_changed": bool(new_rel.get("matter_deps_changed")),
                 "py_deps_installed": new_rel.get("py_deps_installed", []),
+                "frontend_updated": bool(new_rel.get("frontend_updated")),
                 "message": msg,
             }
         except Exception as exc:
