@@ -2,6 +2,14 @@
 // MODE VISIBILITY, ONBOARDING & MULTI-MARQUES (AUTONOME vs MODE « + »)
 // =============================================================================
 
+function _normalizeContainerHttpUrl(raw) {
+  let u = String(raw || "").trim().replace(/\/+$/, "");
+  if (u && !/^https?:\/\//i.test(u)) {
+    u = `http://${u}`;
+  }
+  return u;
+}
+
 function applyModeVisibility() {
   const pm = window.stoveProvider;
   const mode = pm ? pm.getMode() : "standalone";
@@ -21,34 +29,8 @@ function applyModeVisibility() {
     el.classList.toggle("hidden", servedByContainer);
   });
 
-  // Pill badge d'état dans le header (masqué en standalone et sur le frontend servi par le conteneur)
-  const pill = document.getElementById("hdr-app-mode-pill");
-  if (pill) {
-    if (mode === "standalone" || servedByContainer) {
-      pill.classList.add("hidden");
-    } else {
-      const badges = {
-        container: {
-          label: "MODE +",
-          cls: "px-2.5 py-1 rounded-lg border border-indigo-500/70 bg-indigo-950/70 text-indigo-300 text-[10px] sm:text-xs font-extrabold tracking-wide cursor-pointer hover:brightness-110 transition",
-          title: "Mode « + » actif (Conteneur Compagnon connecté)",
-        },
-        fallback: {
-          label: "REPLI CLOUD",
-          cls: "px-2.5 py-1 rounded-lg border border-sky-500/70 bg-sky-950/60 text-sky-300 text-[10px] sm:text-xs font-extrabold tracking-wide cursor-pointer hover:brightness-110 transition",
-          title: "Conteneur hors portée — Repli Cloud automatique (4G/5G)",
-        },
-        demo: {
-          label: "DÉMO",
-          cls: "px-2.5 py-1 rounded-lg border border-emerald-500/70 bg-emerald-950/60 text-emerald-300 text-[10px] sm:text-xs font-extrabold tracking-wide cursor-pointer hover:brightness-110 transition",
-          title: "Mode Démo virtuel actif",
-        },
-      };
-      const b = badges[mode] || badges.demo;
-      pill.textContent = b.label;
-      pill.className = b.cls;
-      pill.title = b.title;
-    }
+  if (typeof updateConfigModalFields === "function") {
+    updateConfigModalFields();
   }
 
   // Adapter l'accordéon Canalisations selon les capacités détectées du poêle
@@ -62,13 +44,14 @@ function applyModeVisibility() {
   const activeSections = ["tab-pellets", "tab-dashboard", "tab-plus-teaser"];
   for (const id of activeSections) {
     const sec = document.getElementById(id);
-    const isVisible = sec && !sec.classList.contains("hidden");
+    const isVisible = sec && !sec.classList.contains("hidden") && sec.style.display !== "none";
     if (!isVisible) continue;
     if ((id === "tab-pellets" || id === "tab-dashboard") && !isContainer) {
       if (typeof switchTab === "function") switchTab("tab-control");
       break;
     }
     if (id === "tab-plus-teaser" && isContainer) {
+      sec.style.display = "none";
       if (typeof switchTab === "function") switchTab("tab-control");
       break;
     }
@@ -82,6 +65,7 @@ function applyModeVisibility() {
     if (typeof closeSilenceModal === "function") closeSilenceModal();
   }
   if (typeof syncVersionBadges === "function") syncVersionBadges();
+  if (typeof updateConnectionIndicator === "function") updateConnectionIndicator();
   if (typeof renderTriArcCockpit === "function") renderTriArcCockpit();
   if (typeof updateSettingsAccordionSummaries === "function") updateSettingsAccordionSummaries();
 
@@ -369,13 +353,16 @@ function _syncPrefsToSettingsDom() {
 }
 
 async function saveOnboardingContainer() {
-  const url = document.getElementById("onb-plus-url")?.value?.trim() || "";
+  const urlInput = document.getElementById("onb-plus-url");
+  const url = _normalizeContainerHttpUrl(urlInput?.value);
+  if (urlInput && url) urlInput.value = url;
   const token = document.getElementById("onb-plus-token")?.value?.trim() || "";
   const fb = document.getElementById("onb-plus-fallback")?.checked ? "1" : "0";
   if (!url) {
     _setBoxStatus("onb-container-status", "URL HTTP du conteneur requise.", false);
     return;
   }
+  if (typeof isSettingsFormDirty !== "undefined") isSettingsFormDirty = false;
   await window.stoveProvider.saveSettings({
     app_mode: "container",
     container_url: url,
@@ -383,30 +370,39 @@ async function saveOnboardingContainer() {
     fallback_to_cloud: fb,
   });
 
-  if (lastScannedSyncTicket) {
-    try {
-      await window.stoveProvider.pullCloudCredentialsFromContainer({ url, token, syncTicket: lastScannedSyncTicket });
-      lastScannedSyncTicket = "";
-      showToast("🔐 Paramètres Cloud & Météo importés depuis le conteneur !");
-    } catch (e) {
-      showToast("Appairé, mais import impossible : " + e.message, true);
-    }
-  } else if (window.stoveProvider?.hasLocalCloudCredentials?.()) {
-    try {
-      await window.stoveProvider.pushCloudCredentialsToContainer({ url, token });
-      showToast("🔐 Paramètres Cloud & Météo synchronisés vers le conteneur !");
-    } catch {
-      // Silencieux si le conteneur possède déjà ses identifiants Cloud protégés
-    }
+  const activeMode = window.stoveProvider.getMode();
+  if (activeMode !== "container") {
+    applyModeVisibility();
+    _setBoxStatus("onb-container-status", `❌ Conteneur injoignable sur ${url} (vérifiez IP, port, token API ou Wi-Fi local).`, false);
+    showToast("Conteneur injoignable : Mode « + » non activé.", true);
+    return;
   }
 
-  await window.stoveProvider.syncWeatherOnContainerConnect({ url, token }).catch(() => {});
+  try {
+    const syncRes = await window.stoveProvider.syncCloudAndWeatherBidirectional({
+      url,
+      token,
+      syncTicket: lastScannedSyncTicket,
+    });
+    lastScannedSyncTicket = "";
+    if (syncRes?.pushedCloud || syncRes?.pushedWeather) {
+      showToast("🔐 Paramètres Cloud & Météo transférés vers le conteneur !");
+    } else if (syncRes?.pulledCloud || syncRes?.pulledWeather) {
+      showToast("🔐 Paramètres Cloud & Météo transférés vers le téléphone !");
+    }
+  } catch (e) {
+    lastScannedSyncTicket = "";
+    showToast("Appairé, mais transfert Cloud & Météo incomplet : " + e.message, true);
+  }
   _syncPrefsToSettingsDom();
 
   closeOnboardingModal();
   applyModeVisibility();
   if (typeof loadDashboard === "function") await loadDashboard();
   if (typeof initSSEStream === "function") initSSEStream();
+  try { if (typeof refreshMatterStatus === "function") refreshMatterStatus(false); } catch { }
+  try { if (typeof loadStorageStatus === "function") loadStorageStatus(); } catch { }
+  try { if (typeof loadUpdateStatus === "function") loadUpdateStatus(); } catch { }
   showToast("✨ Mode « + » activé !");
 }
 
@@ -454,10 +450,18 @@ async function testPlusContainerFromSettings() {
 
 async function savePlusModeSettings() {
   const appMode = document.getElementById("cfg-app-mode")?.value || "standalone";
-  const url = document.getElementById("cfg-plus-url")?.value?.trim() || "";
+  const urlInput = document.getElementById("cfg-plus-url");
+  const url = _normalizeContainerHttpUrl(urlInput?.value);
+  if (urlInput && url) urlInput.value = url;
   const token = document.getElementById("cfg-plus-token")?.value?.trim() || "";
   const fb = document.getElementById("cfg-plus-fallback")?.checked ? "1" : "0";
   const demoProfile = document.getElementById("cfg-demo-profile")?.value || "nobis_2ducts";
+
+  if (appMode === "container" && !url && !window.stoveProvider?.isServedByContainer?.()) {
+    _setBoxStatus("cfg-plus-diag", "❌ Renseignez l'URL HTTP du conteneur (ex: http://192.168.1.50:8080).", false);
+    showToast("URL HTTP du conteneur requise.", true);
+    return;
+  }
 
   const patch = {
     app_mode: appMode,
@@ -468,10 +472,36 @@ async function savePlusModeSettings() {
   if (token && token !== "********") {
     patch.container_api_token = token;
   }
+  if (typeof isSettingsFormDirty !== "undefined") isSettingsFormDirty = false;
   await window.stoveProvider.saveSettings(patch);
+  const activeMode = window.stoveProvider.getMode();
   applyModeVisibility();
+
+  if (appMode === "container" && activeMode !== "container") {
+    _setBoxStatus("cfg-plus-diag", `❌ Conteneur inaccessible à ${url} — mode actif : ${activeMode}.`, false);
+    if (typeof loadDashboard === "function") await loadDashboard();
+    if (typeof initSSEStream === "function") initSSEStream();
+    showToast(`❌ Conteneur inaccessible : mode ${activeMode} actif.`, true);
+    return;
+  }
+
   if (window.stoveProvider.isContainerActive()) {
-    await window.stoveProvider.syncWeatherOnContainerConnect().catch(() => {});
+    _setBoxStatus("cfg-plus-diag", `✅ Mode « + » actif (${url || window.location.origin})`, true);
+    try {
+      const syncRes = await window.stoveProvider.syncCloudAndWeatherBidirectional({
+        url,
+        token: token && token !== "********" ? token : undefined,
+        syncTicket: lastScannedSyncTicket,
+      });
+      lastScannedSyncTicket = "";
+      if (syncRes?.pushedCloud || syncRes?.pushedWeather) {
+        _setBoxStatus("cfg-cloud-sync-status", "✅ Paramètres Cloud & Météo transférés vers le conteneur.", true);
+      } else if (syncRes?.pulledCloud || syncRes?.pulledWeather) {
+        _setBoxStatus("cfg-cloud-sync-status", "✅ Paramètres Cloud & Météo transférés vers le téléphone.", true);
+      }
+    } catch {
+      lastScannedSyncTicket = "";
+    }
     _syncPrefsToSettingsDom();
   }
   if (typeof loadDashboard === "function") await loadDashboard();
@@ -619,23 +649,30 @@ async function _applyScannedPairingPayload(rawText, context) {
 
   if (lastScannedSyncTicket) {
     try {
-      _setBoxStatus("cfg-cloud-sync-status", "🔐 Import chiffré Cloud & Météo en cours...", true);
-      await window.stoveProvider.pullCloudCredentialsFromContainer({
+      _setBoxStatus("cfg-cloud-sync-status", "🔐 Synchronisation chiffrée Cloud & Météo en cours...", true);
+      const syncRes = await window.stoveProvider.syncCloudAndWeatherBidirectional({
         url: parsed.url,
         token: parsed.token,
         syncTicket: lastScannedSyncTicket,
       });
       lastScannedSyncTicket = "";
-      _setBoxStatus("cfg-cloud-sync-status", "✅ Paramètres Cloud & Météo importés localement !", true);
+      if (syncRes?.pushedCloud || syncRes?.pushedWeather) {
+        _setBoxStatus("cfg-cloud-sync-status", "✅ Paramètres Cloud & Météo transférés vers le conteneur !", true);
+      } else if (syncRes?.pulledCloud || syncRes?.pulledWeather) {
+        _setBoxStatus("cfg-cloud-sync-status", "✅ Paramètres Cloud & Météo importés localement !", true);
+      } else {
+        _setBoxStatus("cfg-cloud-sync-status", "✅ Cloud & Météo déjà synchronisés.", true);
+      }
       _syncPrefsToSettingsDom();
+      await savePlusModeSettings();
       if (typeof loadSettings === "function") await loadSettings();
-      if (typeof loadDashboard === "function") await loadDashboard();
-      showToast("🔐 Appairage, Cloud & Météo importés !");
+      showToast("🔐 Appairage, Cloud & Météo synchronisés — Mode « + » activé !");
     } catch (e) {
-      _setBoxStatus("cfg-cloud-sync-status", `❌ Import : ${e.message}`, false);
+      lastScannedSyncTicket = "";
+      _setBoxStatus("cfg-cloud-sync-status", `❌ Synchronisation : ${e.message}`, false);
     }
   } else {
-    showToast("📷 QR Code lu ! Cliquez sur « Appliquer le Mode » pour enregistrer.");
+    await savePlusModeSettings();
   }
 }
 

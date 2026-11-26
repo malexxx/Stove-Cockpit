@@ -217,4 +217,16 @@ describe("Micronova register engine (parité backend)", () => {
     expect(dx?.speed_get_key).toBe("canalization_2dx_get");
     expect(dx?.temp_get_key).toBe("canalization_2dx_temp_air_get");
   });
+
+  it("normalise status_label en TRAVAIL (Normal) même si enc_val vaut Work", () => {
+    const rmap = parseRegistersMap({
+      registers_map: [
+        ...sampleAir2Ducts.registers_map,
+        { reg_key: "status_get", offset: 8, formula: "#", reg_type: "GET", enc_val: [{ lang: "ENG", value: 5, description: "Work" }] },
+      ],
+    });
+    const { latest } = decodeBufferToTelemetry({ 8: 5, 103: 21 }, rmap, { agua_brand: "nobis" });
+    expect(latest.status_code).toBe(5);
+    expect(latest.status_label).toBe("TRAVAIL (Normal)");
+  });
 });

@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Stove Cockpit — Pilotage & Supervision Micronova",
   "short_name": "Stove Cockpit",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "Cockpit universel pour poêles et chaudières compatibles Micronova Agua IOT (Mode Autonome & Conteneur Mode +)",
   "start_url": "./",
   "scope": "./",

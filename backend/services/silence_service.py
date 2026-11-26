@@ -8,6 +8,7 @@ import json
 import logging
 import time
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from clients import agua_client
 from database import (
@@ -110,9 +111,9 @@ def _build_silence_activation_plan(
         *( [("standby_set", 0.0)] if can_write_eco else [] ),
         ("chrono_week_enable_set", 0.0),
         ("fun_auto_set", 1.0),
-        ("fan_front_speed", 8.0),
-        ("duct_left_speed", 8.0),
-        ("duct_right_speed", 8.0),
+        ("fan_front_speed", 0.0),
+        ("duct_left_speed", 0.0),
+        ("duct_right_speed", 0.0),
         ("temp_amb_setpoint", 7.0),
         ("duct_left_setpoint", 7.0),
         ("duct_right_setpoint", 7.0),
@@ -123,7 +124,7 @@ def _build_silence_activation_plan(
     ]
     modified_keys = [rk for rk, _ in specs]
     eco_txt = "Boost/Éco/Chrono" if can_write_eco else "Boost/Chrono"
-    log_detail = f"poêle allumé : {eco_txt} désactivés, Auto total activé, consignes en hors-gel 7°C (régulation P0 & Ventil 0 sans extinction)"
+    log_detail = f"poêle allumé : {eco_txt} désactivés, Auto flamme seulement activé, ventilations coupées (0), consignes en hors-gel 7°C"
     return cmds, modified_keys, log_detail
 
 
@@ -237,41 +238,114 @@ _DEFAULT_RESTORE_OFFSETS = {
 }
 
 
-def _parse_override_commands(override_commands: list[Any] | None) -> dict[str, float]:
-    overrides_dict: dict[str, float] = {}
+def _find_active_chrono_program(
+    regs: dict[str, Any],
+    now_dt: datetime | None = None,
+) -> dict[str, Any] | None:
+    """Retourne le programme Chrono P1..P4 actif pour l'instant courant, avec ses consignes cibles."""
+    if now_dt is None:
+        try:
+            ref_dt = datetime.now(ZoneInfo("Europe/Paris"))
+        except Exception:
+            ref_dt = datetime.now()
+    else:
+        ref_dt = now_dt
+    now_slot = ref_dt.hour * 6 + (ref_dt.minute // 10)
+    today_bit = 1 << ref_dt.weekday()
+    prev_day_bit = 1 << ((ref_dt.weekday() - 1) % 7)
+
+    for p in (1, 2, 3, 4):
+        start_slot = int(round(float(regs.get(f"chrono_p{p}_start_set", {}).get("current_val", 144))))
+        stop_slot = int(round(float(regs.get(f"chrono_p{p}_stop_set", {}).get("current_val", 144))))
+        days_mask = int(round(float(regs.get(f"chrono_p{p}_days_mask", {}).get("current_val", 0))))
+        if start_slot >= 144 or stop_slot >= 144 or start_slot == stop_slot or days_mask <= 0:
+            continue
+
+        if stop_slot > start_slot:
+            is_active = (days_mask & today_bit) != 0 and start_slot <= now_slot < stop_slot
+        else:
+            is_active = ((days_mask & today_bit) != 0 and now_slot >= start_slot) or (
+                (days_mask & prev_day_bit) != 0 and now_slot < stop_slot
+            )
+
+        if not is_active:
+            continue
+
+        chrono_to_target = (
+            (f"chrono_p{p}_temperature_set", "temp_amb_setpoint"),
+            (f"chrono_p{p}_power_set", "power_level"),
+            (f"chrono_p{p}_fan_front_set", "fan_front_speed"),
+            (f"chrono_p{p}_tcanl_set", "duct_left_setpoint"),
+            (f"chrono_p{p}_canl_set", "duct_left_speed"),
+            (f"chrono_p{p}_tcanr_set", "duct_right_setpoint"),
+            (f"chrono_p{p}_canr_set", "duct_right_speed"),
+        )
+        values: dict[str, float] = {}
+        for src_key, dst_key in chrono_to_target:
+            if src_key in regs and regs[src_key].get("current_val") is not None:
+                values[dst_key] = float(regs[src_key]["current_val"])
+        return {"program": p, "values": values}
+
+    return None
+
+
+def _parse_override_commands(override_commands: list[Any] | None) -> list[tuple[str, float, int | None]]:
+    parsed: list[tuple[str, float, int | None]] = []
     if not override_commands:
-        return overrides_dict
+        return parsed
     for c in override_commands:
         rk = getattr(c, "reg_key", None) or (c.get("reg_key") if isinstance(c, dict) else None)
         val = getattr(c, "value", None) if hasattr(c, "value") else (c.get("value") if isinstance(c, dict) else None)
+        raw_off = getattr(c, "offset", None) if hasattr(c, "offset") else (c.get("offset") if isinstance(c, dict) else None)
         if rk is not None and val is not None:
             try:
-                overrides_dict[str(rk)] = float(val)
+                parsed_val = float(val)
+                parsed_off: int | None = None
+                if raw_off is not None and int(raw_off) > 0:
+                    parsed_off = int(raw_off)
+                parsed.append((str(rk), parsed_val, parsed_off))
             except (ValueError, TypeError):
                 pass
-    return overrides_dict
+    return parsed
+
+
+def _build_override_commands(
+    override_commands: list[Any] | None,
+    regs: dict[str, Any],
+) -> list[dict[str, Any]]:
+    overrides = _parse_override_commands(override_commands)
+    cmds: list[dict[str, Any]] = []
+    for rk, val, explicit_off in overrides:
+        def_off = _DEFAULT_RESTORE_OFFSETS.get(rk, (0.0, 0))[1]
+        reg_off = int(regs.get(rk, {}).get("offset", def_off))
+        off = explicit_off if explicit_off is not None else reg_off
+        cmds.append({"reg_key": rk, "value": float(val), "offset": off})
+    return cmds
 
 
 def _build_silence_restore_commands(
     initial: dict[str, Any],
     modified_keys: list[str] | None,
     regs: dict[str, Any],
-    overrides_dict: dict[str, float],
+    active_chrono: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
+    restore_base: dict[str, Any] = dict(initial)
     if modified_keys is None:
-        keys_to_restore = [k for k in _DEFAULT_RESTORE_OFFSETS if k in initial]
+        keys_to_restore = [k for k in _DEFAULT_RESTORE_OFFSETS if k in restore_base]
     else:
         keys_to_restore = list(modified_keys)
 
-    for k in overrides_dict:
-        if k not in keys_to_restore and k in _DEFAULT_RESTORE_OFFSETS:
-            keys_to_restore.append(k)
+    if active_chrono and isinstance(active_chrono.get("values"), dict):
+        for rk, val in active_chrono["values"].items():
+            restore_base[rk] = float(val)
+            if rk not in keys_to_restore:
+                keys_to_restore.append(rk)
 
     restore_cmds: list[dict[str, Any]] = []
     for k in keys_to_restore:
         def_val, def_off = _DEFAULT_RESTORE_OFFSETS.get(k, (0.0, 0))
         off = int(regs.get(k, {}).get("offset", def_off))
-        target_val = overrides_dict[k] if k in overrides_dict else float(initial.get(k, def_val))
+        target_val = float(restore_base.get(k, def_val))
         restore_cmds.append({"reg_key": k, "value": target_val, "offset": off})
     return restore_cmds
 
@@ -279,12 +353,13 @@ def _build_silence_restore_commands(
 async def deactivate_silence_mode(
     is_auto_expired: bool = False,
     override_commands: list[Any] | None = None,
+    now_dt: datetime | None = None,
 ) -> dict[str, Any]:
     """
-    Désactive le mode Silence intelligent et restaure l'état d'origine du poêle :
+    Désactive le mode Silence intelligent et restaure l'état d'origine (ou le programme Chrono actif) :
     - Annule le timer d'expiration planifié dans APScheduler.
-    - Restaure les consignes thermiques et ventilations sauvegardées avant activation.
-    - Applique d'éventuelles commandes de substitution (override_commands).
+    - Si Chrono était actif avant Silence et qu'un programme P1..P4 est en cours, applique ses consignes.
+    - Restaure d'abord les paramètres précédents/Chrono, puis applique d'éventuelles surcharges manuelles.
     - Met à jour l'état persistant et journalise l'événement.
     """
     active_mode = get_active_mode()
@@ -299,8 +374,17 @@ async def deactivate_silence_mode(
         except Exception as exc:
             logger.debug("Suppression silence_timer_job ignorée : %s", exc)
 
-    overrides_dict = _parse_override_commands(override_commands)
-    restore_cmds = _build_silence_restore_commands(initial, modified_keys, regs, overrides_dict)
+    active_chrono = None
+    if float(initial.get("chrono_week_enable_set", 0.0)) >= 1.0:
+        active_chrono = _find_active_chrono_program(regs, now_dt=now_dt)
+
+    restore_cmds = _build_silence_restore_commands(
+        initial,
+        modified_keys,
+        regs,
+        active_chrono=active_chrono,
+    )
+    override_cmds = _build_override_commands(override_commands, regs)
 
     # Registre #33250 (0x81E2, set_silece_set) volontairement non écrit (inactif sur Nobis A10, #107 bit 2048 = 0).
     if restore_cmds:
@@ -308,24 +392,28 @@ async def deactivate_silence_mode(
     else:
         write_res = {"status": "ok", "count": 0, "latest": {}}
 
+    if override_cmds:
+        write_res = await execute_registers_batch_write(override_cmds, skip_poll=True)
+
     state["active"] = False
     state["end_epoch"] = 0.0
     save_silence_state(state)
 
     latest = await collect_telemetry_cycle(active_mode)
 
-    if overrides_dict:
-        over_summary = ", ".join(f"{k}={v:g}" for k, v in overrides_dict.items())
-        reason = f"Désactivation manuelle avec consigne ({over_summary})"
+    chrono_note = f" via programme Chrono P{active_chrono['program']}" if active_chrono else ""
+    if override_cmds:
+        over_summary = ", ".join(f"{c['reg_key']}={c['value']:g}" for c in override_cmds)
+        reason = f"Désactivation manuelle avec restauration préalable{chrono_note} puis consigne ({over_summary})"
     elif is_auto_expired:
-        reason = "Fin du compte à rebours"
+        reason = f"Fin du compte à rebours{chrono_note}"
     else:
-        reason = "Désactivation manuelle"
+        reason = f"Désactivation manuelle{chrono_note}"
 
     db_log(
         "COMMAND",
         "SILENCE",
-        f"Mode Silence ! intelligent désactivé ({reason}) : paramètres et consignes d'origine restaurés.",
+        f"Mode Silence ! intelligent désactivé ({reason}) : paramètres restaurés.",
         active_mode,
     )
 

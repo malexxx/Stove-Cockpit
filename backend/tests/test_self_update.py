@@ -307,7 +307,7 @@ class TestSelfUpdateSystem(BugBountyTestCase):
         mono_files = {
             "malexxx-Stove-Cockpit-abcdef1/backend/server.py": "def main():\n    pass\n",
             "malexxx-Stove-Cockpit-abcdef1/backend/main.py": "app = object()\n",
-            "malexxx-Stove-Cockpit-abcdef1/backend/config.py": 'APP_VERSION = "0.0.8"\n',
+            "malexxx-Stove-Cockpit-abcdef1/backend/config.py": 'APP_VERSION = "0.0.9"\n',
             "malexxx-Stove-Cockpit-abcdef1/backend/requirements.txt": req_txt,
             "malexxx-Stove-Cockpit-abcdef1/backend/routers/admin.py": "# router\n",
             "malexxx-Stove-Cockpit-abcdef1/backend/services/update_service.py": "# service\n",
@@ -331,7 +331,7 @@ class TestSelfUpdateSystem(BugBountyTestCase):
             _extract_tarball_safely(tar_path, stage_dir)
             _flatten_monorepo_stage_if_needed(stage_dir)
             meta = _validate_staged_release(stage_dir, config.BASE_DIR)
-            self.assertEqual(meta["app_version"], "0.0.8")
+            self.assertEqual(meta["app_version"], "0.0.9")
             self.assertTrue(os.path.isfile(os.path.join(stage_dir, "shared", "brands.json")))
             self.assertFalse(os.path.exists(os.path.join(stage_dir, "backend")))
             self.assertFalse(os.path.exists(os.path.join(stage_dir, "frontend")))
@@ -474,8 +474,8 @@ class TestSelfUpdateSystem(BugBountyTestCase):
 
         with open(os.path.join(config.BASE_DIR, "Dockerfile"), encoding="utf-8") as fh:
             df = fh.read()
-        self.assertIn("ARG APP_VERSION=0.0.8", df)
-        self.assertIn("ARG DOCKER_VERSION=v0.0.8", df)
+        self.assertIn("ARG APP_VERSION=0.0.9", df)
+        self.assertIn("ARG DOCKER_VERSION=v0.0.9", df)
         self.assertIn("APP_VERSION=${APP_VERSION}", df)
         self.assertIn("DOCKER_VERSION=${DOCKER_VERSION}", df)
 
@@ -483,7 +483,7 @@ class TestSelfUpdateSystem(BugBountyTestCase):
             cfg_txt = fh.read()
         m_ver = _APP_VERSION_RE.search(cfg_txt)
         self.assertIsNotNone(m_ver)
-        self.assertEqual(m_ver.group(1), "0.0.8")
+        self.assertEqual(m_ver.group(1), "0.0.9")
 
         # Garde-fou anti-variable figée (ex: conteneur mis à jour ayant conservé APP_VERSION=2.2.0)
         with patch.dict(os.environ, {"APP_VERSION": "2.2.0", "DOCKER_VERSION": "2.2.0"}, clear=False):

@@ -107,7 +107,7 @@
               </div>
 
               <!-- Bouton Power Central identique au Cockpit Tri-Arc -->
-              <div class="h-14 w-14 aspect-square rounded-2xl border-2 flex items-center justify-center shrink-0 shadow-lg bg-rose-950/90 border-rose-500 text-rose-200">
+              <div class="h-14 w-14 aspect-square rounded-2xl border-2 flex items-center justify-center shrink-0 shadow-lg bg-emerald-600/90 border-emerald-400 text-white">
                 <svg viewBox="0 0 24 24" class="w-6 h-6 drop-shadow" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M12 2v10" />
                   <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
@@ -335,10 +335,13 @@
           <div class="rounded-xl p-3 bg-indigo-950/25 border border-indigo-800/60 space-y-2">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <span class="font-semibold text-indigo-200 flex items-center gap-1.5">
-                <span>🔐</span><span>Synchronisation chiffrée Cloud &amp; Météo (AES-256-GCM)</span>
+                <span>🔐</span><span>Synchronisation automatique bidirectionnelle Cloud &amp; Météo (AES-256-GCM)</span>
               </span>
-              <span class="text-[10px] text-indigo-300/80 font-mono">Bout en bout</span>
+              <span class="text-[10px] text-indigo-300/80 font-mono">Automatique • Bout en bout</span>
             </div>
+            <p class="text-[11px] text-gray-300 leading-relaxed">
+              À chaque connexion au conteneur, les identifiants Cloud et la station météo sont transférés automatiquement : vers le conteneur s'il n'est pas configuré, ou vers le téléphone s'il n'est pas configuré.
+            </p>
             <div class="flex flex-wrap gap-2">
               <button type="button" onclick="syncCloudCredentialsToContainerUI()"
                 class="px-3 py-1.5 rounded-lg bg-emerald-800/80 hover:bg-emerald-700 text-white border border-emerald-600/70 font-semibold cursor-pointer flex items-center gap-1.5">

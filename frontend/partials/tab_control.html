@@ -5,7 +5,7 @@
   <div id="triarc-cockpit-card" class="w-full max-w-[460px] mx-auto overflow-hidden relative select-none">
 
     <!-- Indicateurs des 3 écrans (SX | Poêle | DX) -->
-    <div class="pt-1 pb-0.5 flex items-center justify-center gap-2">
+    <div id="triarc-screen-dots" class="pt-1 pb-0.5 flex items-center justify-center gap-2">
       <button type="button" onclick="goToTriArcZone('SX')" id="triarc-dot-sx"
         class="w-2 h-2 rounded-full bg-slate-700 transition-all" title="Canalisation Gauche (SX)"></button>
       <button type="button" onclick="goToTriArcZone('AMB')" id="triarc-dot-amb"
@@ -32,6 +32,7 @@
         </div>
       </div>
     </div>
+    <div id="triarc-pending-bar-slot" class="w-full max-w-[460px] mx-auto px-1 shrink-0"></div>
   </div>
 
   <!-- Conteneur unifié des 10 interfaces alternatives de pilotage -->

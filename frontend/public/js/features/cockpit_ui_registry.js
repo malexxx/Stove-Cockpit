@@ -401,14 +401,11 @@ function cockpitSetFan(zone, val) {
   const fanMax = Math.max(1, Number(caps.fan_max ?? 8));
   const v = Math.max(0, Math.min(fanMax, Math.round(Number(val))));
   const key = zone === "AMB" ? "fan_front_speed" : (zone === "SX" ? "duct_left_speed" : "duct_right_speed");
-  const changes = [];
-  if (zone === "AMB" && v < 8) {
-    const autoCur = Number(getTriArcLiveOrOpt("fun_auto_set", getRegVal("fun_auto_set", latestData.fun_auto_set ?? 0)));
-    if (autoCur === 1) changes.push({ reg_key: "fun_auto_set", value: 0 });
+  if (v < 8 && typeof rememberManualFanSpeed === "function") {
+    rememberManualFanSpeed(key, v);
   }
-  changes.push({ reg_key: key, value: v });
   triggerCockpitHaptic();
-  queueTriArcChanges(changes);
+  queueTriArcChanges([{ reg_key: key, value: v }]);
 }
 
 function cockpitStepFan(zone, delta) {
@@ -428,8 +425,6 @@ function cockpitSetPower(val) {
   const changes = [{ reg_key: "power_level", value: v }];
   const pwfCur = Number(getTriArcLiveOrOpt("fun_pwf_set", getRegVal("fun_pwf_set", latestData.fun_pwf_set ?? 0)));
   if (pwfCur > 0) changes.unshift({ reg_key: "fun_pwf_set", value: 0 });
-  const autoCur = Number(getTriArcLiveOrOpt("fun_auto_set", getRegVal("fun_auto_set", latestData.fun_auto_set ?? 0)));
-  if (autoCur === 1) changes.unshift({ reg_key: "fun_auto_set", value: 0 });
   triggerCockpitHaptic();
   queueTriArcChanges(changes);
 }
@@ -465,15 +460,59 @@ function cockpitCloseSheet() {
   renderTriArcCockpit();
 }
 
+function _renderSlashedCockpitIcon(innerHtml, slashed = false) {
+  if (!slashed) return `<span class="inline-flex items-center justify-center">${innerHtml}</span>`;
+  return `
+    <span class="relative inline-flex items-center justify-center opacity-55">
+      ${innerHtml}
+      <svg viewBox="0 0 20 20" class="absolute inset-0 w-full h-full pointer-events-none" aria-hidden="true">
+        <line x1="2.5" y1="17.5" x2="17.5" y2="2.5" stroke="#f43f5e" stroke-width="2.4" stroke-linecap="round" />
+      </svg>
+    </span>
+  `;
+}
+
+function renderCockpitAutoIcon(zoneAutoIdx, compact = false) {
+  const fanSize = compact ? "w-3.5 h-3.5" : "w-4 h-4";
+  const flameSize = compact ? "text-sm leading-none" : "text-base leading-none";
+  const slashFlame = zoneAutoIdx === 1;
+  const slashFan = zoneAutoIdx === 3;
+  const flamePart = _renderSlashedCockpitIcon(`<span class="${flameSize}">🔥</span>`, slashFlame);
+  const fanPart = _renderSlashedCockpitIcon(svgPropellerFanIcon(fanSize, "currentColor"), slashFan);
+  return `<span class="inline-flex items-center justify-center gap-0.5">${flamePart}<span class="${compact ? "text-xs" : "text-sm"} font-bold">+</span>${fanPart}</span>`;
+}
+
+function renderCockpitBoostIcon(pwfVal, isBoostRealP8 = false) {
+  const p = Number(pwfVal);
+  if (p === 2) {
+    const glow = isBoostRealP8
+      ? "drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]"
+      : "drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]";
+    return `
+      <div class="relative inline-flex items-center justify-center">
+        <span class="text-2xl leading-none ${glow}">🚀</span>
+        <span class="absolute -bottom-1.5 -right-2 text-[14px] sm:text-[15px] leading-none drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)]" aria-hidden="true">⏱️</span>
+      </div>
+    `;
+  }
+  if (p === 1 || (p === 0 && isBoostRealP8)) {
+    return `<span class="text-2xl leading-none drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]">🚀</span>`;
+  }
+  return `<span class="text-2xl leading-none">🚀</span>`;
+}
+
 function renderCockpitPowerBtn(T, extraCls = "h-12 w-12 rounded-2xl") {
-  let cls = "bg-orange-600/90 border-orange-400 text-white shadow-[0_0_14px_rgba(234,88,12,0.45)]";
+  let cls = "bg-rose-600/90 hover:bg-rose-500 border-rose-400 text-white shadow-[0_0_14px_rgba(244,63,94,0.45)]";
+  let title = "Éteindre le poêle";
   if (T.isAlarm) {
     cls = "bg-rose-700 border-rose-300 text-white shadow-[0_0_16px_rgba(244,63,94,0.65)] animate-pulse";
+    title = "Alarme active • Voir la procédure";
   } else if (T.st === 0) {
-    cls = "bg-rose-950/90 border-rose-500 text-rose-200";
+    cls = "bg-emerald-600/90 hover:bg-emerald-500 border-emerald-400 text-white shadow-[0_0_14px_rgba(16,185,129,0.45)]";
+    title = "Allumer le poêle";
   }
   return `
-    <button type="button" onclick="handleDynamicPowerAction()" title="Bouton Marche / Arrêt Poêle"
+    <button type="button" onclick="handleDynamicPowerAction()" title="${title}"
       class="${extraCls} border-2 flex items-center justify-center shrink-0 transition hover:brightness-110 active:scale-95 cursor-pointer ${cls}">
       <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 2v10" />
@@ -500,12 +539,11 @@ function renderCockpitPhasePill(T, compact = false) {
 function renderCockpitZoneTabs(zone, T, caps) {
   const ducts = Array.isArray(caps?.ducts) ? caps.ducts : [];
   if (ducts.length === 0) return "";
-  const tabs = [
-    { id: "AMB", label: caps.stove_type === "hydro" ? "Chaudière" : "Salon", val: `${T.realAmb}°→${fmtTriArcTempSp(T.spAmb)}`, activeCls: "bg-orange-600/25 border-orange-400 text-orange-200" }
-  ];
+  const tabs = [];
   if (ducts.some(d => d.id === "SX")) {
     tabs.push({ id: "SX", label: getDuctName("SX"), val: `${T.realSx}°→${fmtTriArcTempSp(T.spSx)}`, activeCls: "bg-cyan-600/25 border-cyan-400 text-cyan-200" });
   }
+  tabs.push({ id: "AMB", label: caps.stove_type === "hydro" ? "Chaudière" : "Salon", val: `${T.realAmb}°→${fmtTriArcTempSp(T.spAmb)}`, activeCls: "bg-orange-600/25 border-orange-400 text-orange-200" });
   if (ducts.some(d => d.id === "DX")) {
     tabs.push({ id: "DX", label: getDuctName("DX"), val: `${T.realDx}°→${fmtTriArcTempSp(T.spDx)}`, activeCls: "bg-sky-600/25 border-sky-400 text-sky-200" });
   }
@@ -522,49 +560,78 @@ function renderCockpitZoneTabs(zone, T, caps) {
   `;
 }
 
-function renderCockpitModeBar(T, zone, compact = false) {
+function renderCockpitModeBar(T, zone, _compact = false) {
   const caps = _getTriArcCaps();
+  const ducts = Array.isArray(caps.ducts) ? caps.ducts : [];
   const isContainerSil = Boolean(T.isContainerSil);
   const silTimerActive = isContainerSil && T.isSilActive && T.remSec > 0;
   const silBtnActive = isContainerSil ? silTimerActive : Boolean(T.isSilActive);
   const silTimerTxt = silTimerActive
     ? `${Math.floor(T.remSec / 3600)}h${String(Math.floor((T.remSec % 3600) / 60)).padStart(2, "0")}`
     : "";
-  const silLabel = silTimerActive ? silTimerTxt : (silBtnActive ? "Actif" : "Silence");
+  const hasAnyAutoFan = (typeof _triArcZoneSupportsFanAuto === "function" && _triArcZoneSupportsFanAuto("AMB", caps))
+    || ducts.some(d => Number(d.speed_max ?? 8) >= 8);
+  const showAutoBtn = caps.has_auto !== false || hasAnyAutoFan;
   const zoneAutoIdx = getTriArcZoneAutoIdx(zone, T);
 
+  const btnBaseCls = "flex-1 h-14 sm:h-15 min-h-[54px] rounded-2xl border-2 relative flex items-center justify-center transition cursor-pointer";
   const buttons = [
     `
       <button type="button" onclick="toggleTriArcOptionBubble('silence')"
+        aria-label="${isContainerSil ? "Mode Silence (Timer Conteneur)" : "Mode Silence (Sans temporisation)"}"
         title="${isContainerSil ? "Mode Silence (Timer Conteneur)" : "Mode Silence (Sans temporisation)"}"
-        class="flex-1 ${compact ? "h-11" : "h-13 py-2"} rounded-2xl border flex flex-col items-center justify-center transition cursor-pointer ${silBtnActive ? "bg-purple-950/75 border-purple-400 text-white" : "bg-slate-900/90 border-slate-700 text-slate-300 hover:border-purple-400"}">
-        <span class="text-lg leading-none">🤫</span>
-        <span ${silTimerActive ? 'id="triarc-silence-btn-timer"' : ""} class="text-[10px] font-bold mt-0.5 tabular-nums">${silLabel}</span>
+        class="${btnBaseCls} ${silBtnActive ? "bg-purple-950/75 border-purple-400 text-white shadow-[0_0_12px_rgba(168,85,247,0.35)]" : "bg-slate-900/90 border-slate-700 text-slate-400 hover:border-purple-400"}">
+        <span class="text-2xl leading-none">🤫</span>
+        ${silTimerActive ? `<span id="triarc-silence-btn-timer" class="absolute bottom-1 right-1.5 text-[9.5px] font-black tabular-nums text-purple-200 leading-none">${silTimerTxt}</span>` : ""}
       </button>
     `
   ];
-  if (caps.has_auto !== false) {
-    const autoCls = zoneAutoIdx === 2
-      ? "bg-orange-950/80 border-orange-400 text-orange-200"
-      : (zoneAutoIdx === 1 ? "bg-cyan-950/80 border-cyan-400 text-cyan-200" : "bg-slate-900/90 border-slate-700 text-slate-300 hover:border-cyan-400");
-    const autoTxt = zoneAutoIdx === 2 ? "Auto" : (zoneAutoIdx === 1 ? "Ventil" : "Auto");
+  if (showAutoBtn) {
+    let autoCls = "bg-slate-900/90 border-slate-700 text-slate-400 hover:border-cyan-400";
+    if (zoneAutoIdx === 1) {
+      autoCls = "bg-cyan-950/80 border-cyan-400 text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.35)]";
+    } else if (zoneAutoIdx === 3) {
+      autoCls = "bg-amber-950/80 border-amber-400 text-amber-200 shadow-[0_0_12px_rgba(245,158,11,0.35)]";
+    } else if (zoneAutoIdx === 2) {
+      autoCls = "bg-orange-950/80 border-orange-400 text-orange-200 shadow-[0_0_12px_rgba(249,115,22,0.35)]";
+    }
     buttons.push(`
-      <button type="button" onclick="toggleTriArcOptionBubble('auto')" title="Mode Auto"
-        class="flex-1 ${compact ? "h-11" : "h-13 py-2"} rounded-2xl border flex flex-col items-center justify-center transition cursor-pointer ${autoCls}">
-        <span class="text-sm leading-none flex items-center gap-0.5"><span>🔥</span>${svgPropellerFanIcon("w-3.5 h-3.5", "currentColor")}</span>
-        <span class="text-[10px] font-bold mt-0.5">${autoTxt}</span>
+      <button type="button" onclick="toggleTriArcOptionBubble('auto')"
+        aria-label="Mode Auto"
+        title="Mode Auto (OFF / Flamme / Ventilation / Auto complet)"
+        class="${btnBaseCls} ${autoCls}">
+        ${renderCockpitAutoIcon(zoneAutoIdx, false)}
+      </button>
+    `);
+  }
+  if (T.canWriteEco) {
+    const ecoCls = T.isEco
+      ? "bg-emerald-950/80 border-emerald-400 text-emerald-200 shadow-[0_0_12px_rgba(16,185,129,0.35)]"
+      : "bg-slate-900/90 border-slate-700 text-slate-400 hover:border-emerald-400";
+    buttons.push(`
+      <button type="button" onclick="toggleTriArcOptionBubble('eco')"
+        aria-label="Comfort Clima"
+        title="Comfort Clima (ON/OFF, temporisation et Delta T°)"
+        class="${btnBaseCls} ${ecoCls}">
+        <span class="text-2xl leading-none">💤</span>
       </button>
     `);
   }
   if (caps.has_boost !== false) {
-    const boostCls = T.pwfVal === 1
-      ? "bg-rose-950/80 border-rose-400 text-rose-200"
-      : (T.pwfVal === 2 ? "bg-amber-950/80 border-amber-400 text-amber-200" : "bg-slate-900/90 border-slate-700 text-slate-300 hover:border-rose-400");
+    const pwrMax = Math.max(1, Number(caps.power_max ?? 7));
+    const isBoostRealP8 = T.st === 5 && Number(T.realPwr) > pwrMax;
+    let boostBtnCls = "bg-slate-900/90 border-slate-700 text-slate-300 hover:border-rose-400";
+    if (T.pwfVal === 1 || (T.pwfVal === 0 && isBoostRealP8) || (T.pwfVal === 2 && isBoostRealP8)) {
+      boostBtnCls = "bg-rose-950/80 border-rose-400 text-rose-200 shadow-[0_0_14px_rgba(244,63,94,0.45)]";
+    } else if (T.pwfVal === 2) {
+      boostBtnCls = "bg-amber-950/80 border-amber-400 text-amber-200 shadow-[0_0_14px_rgba(245,158,11,0.45)]";
+    }
     buttons.push(`
-      <button type="button" onclick="toggleTriArcOptionBubble('boost')" title="Mode Boost (Powerful)"
-        class="flex-1 ${compact ? "h-11" : "h-13 py-2"} rounded-2xl border flex flex-col items-center justify-center transition cursor-pointer ${boostCls}">
-        <span class="text-lg leading-none">🚀</span>
-        <span class="text-[10px] font-bold mt-0.5">${T.pwfVal === 1 ? "Actif" : (T.pwfVal === 2 ? "Prog" : "Boost")}</span>
+      <button type="button" onclick="toggleTriArcOptionBubble('boost')"
+        aria-label="Mode Boost"
+        title="Mode Boost / POWERFUL (0=OFF, 1=Actif, 2=Programmé)"
+        class="${btnBaseCls} ${boostBtnCls}">
+        ${renderCockpitBoostIcon(T.pwfVal, isBoostRealP8)}
       </button>
     `);
   }
@@ -576,10 +643,19 @@ function renderCockpitPendingBar() {
   const items = typeof triArcPendingChanges !== "undefined" ? Object.values(triArcPendingChanges) : [];
   if (items.length === 0) return "";
   const summary = items.map(it => `${escapeHtml(it.fmt(it.oldVal))}→${escapeHtml(it.fmt(it.newVal))}`).join(" · ");
+  const isSilActiveNow = window.stoveProvider?.isContainerActive?.()
+    ? Boolean(typeof silenceModeState !== "undefined" && silenceModeState?.active)
+    : Boolean(typeof loadStandaloneSilenceSnapshot === "function" && loadStandaloneSilenceSnapshot());
+  const willExitSilence = isSilActiveNow
+    && (typeof pendingStandaloneSilenceSnapshot === "undefined" || !pendingStandaloneSilenceSnapshot)
+    && items.some(it => typeof SILENCE_OVERRIDABLE_KEYS !== "undefined" && SILENCE_OVERRIDABLE_KEYS[it.reg_key]);
   return `
     <div id="cockpit-pending-bar" class="sticky bottom-1 z-30 mt-2 rounded-2xl bg-slate-900/95 backdrop-blur-md border-2 border-orange-500/80 px-3 py-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.75)] flex items-center justify-between gap-2">
       <div class="min-w-0">
-        <div class="text-[11px] font-extrabold text-orange-300">${items.length} réglage${items.length > 1 ? "s" : ""} en attente</div>
+        <div class="text-[11px] font-extrabold text-orange-300">
+          ${items.length} réglage${items.length > 1 ? "s" : ""} en attente
+          ${willExitSilence ? `<span class="text-purple-300 font-semibold">· désactive Silence</span>` : ""}
+        </div>
         <div class="text-[11px] font-mono text-slate-200 truncate">${summary}</div>
       </div>
       <div class="flex items-center gap-1.5 shrink-0">
@@ -596,16 +672,17 @@ function renderCockpitPendingBar() {
   `;
 }
 
-function renderCockpitSegmentedFan(zone, fanSp, fanReal, caps, isAutoLocked) {
+function renderCockpitSegmentedFan(zone, fanSp, fanReal, caps, isAutoLocked, isPwrAuto = false) {
   const fanMax = Math.max(1, Number(caps.fan_max ?? 8));
   if (isAutoLocked) {
+    const manualIdx = isPwrAuto ? 3 : 0;
     return `
       <div class="flex items-center justify-between gap-2 rounded-2xl bg-cyan-950/35 border border-cyan-500/40 px-3 py-2 text-xs">
         <span class="text-cyan-200 font-bold flex items-center gap-1.5">
           ${svgPropellerFanIcon("w-4 h-4", "#22d3ee")}
           <span>Ventilation Auto · Réel ${fmtTriArcFan(fanReal)}</span>
         </span>
-        <button type="button" onclick="setTriArcAutoOption(0)"
+        <button type="button" onclick="setTriArcAutoOption(${manualIdx})"
           class="px-2.5 py-1 rounded-lg bg-slate-900 border border-cyan-500/50 text-cyan-200 text-[11px] font-bold hover:bg-cyan-900/40 cursor-pointer">
           Manuel
         </button>
@@ -637,12 +714,13 @@ function renderCockpitSegmentedFan(zone, fanSp, fanReal, caps, isAutoLocked) {
   `;
 }
 
-function renderCockpitSegmentedPower(pwrSp, pwrReal, caps, isAutoTotal) {
-  if (isAutoTotal) {
+function renderCockpitSegmentedPower(pwrSp, pwrReal, caps, isPwrAuto, isFanAuto = false) {
+  if (isPwrAuto) {
+    const manualIdx = isFanAuto ? 1 : 0;
     return `
       <div class="flex items-center justify-between gap-2 rounded-2xl bg-orange-950/35 border border-orange-500/40 px-3 py-2 text-xs">
         <span class="text-orange-200 font-bold">🔥 Puissance Auto · Réel P${Math.round(pwrReal)}</span>
-        <button type="button" onclick="setTriArcAutoOption(0)"
+        <button type="button" onclick="setTriArcAutoOption(${manualIdx})"
           class="px-2.5 py-1 rounded-lg bg-slate-900 border border-orange-500/50 text-orange-200 text-[11px] font-bold hover:bg-orange-900/40 cursor-pointer">
           Manuel
         </button>
@@ -678,7 +756,7 @@ function renderCockpitSegmentedPower(pwrSp, pwrReal, caps, isAutoTotal) {
 function renderCockpitManualPanel(T, zone, caps) {
   const Z = getCockpitZoneValues(zone, T, caps);
   const isFanAuto = (zone === "AMB") && (T.autoIdx === 1 || T.autoIdx === 2 || Z.fanSp === 8);
-  const isAutoTotal = T.autoIdx === 2;
+  const isPwrAuto = Number(T.autoPwr) === 1;
   return `
     <div class="space-y-3">
       ${renderCockpitZoneTabs(zone, T, caps)}
@@ -692,8 +770,8 @@ function renderCockpitManualPanel(T, zone, caps) {
           <button type="button" onclick="cockpitStepTemp('${zone}', 1)" class="w-10 h-10 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-black text-lg cursor-pointer">+</button>
         </div>
       </div>
-      ${Z.showFan ? renderCockpitSegmentedFan(zone, Z.fanSp, Z.fanReal, caps, isFanAuto) : ""}
-      ${Z.showPwr ? renderCockpitSegmentedPower(T.pwrSp, T.realPwr, caps, isAutoTotal) : ""}
+      ${Z.showFan ? renderCockpitSegmentedFan(zone, Z.fanSp, Z.fanReal, caps, isFanAuto, isPwrAuto) : ""}
+      ${Z.showPwr ? renderCockpitSegmentedPower(T.pwrSp, T.realPwr, caps, isPwrAuto, isFanAuto) : ""}
     </div>
   `;
 }

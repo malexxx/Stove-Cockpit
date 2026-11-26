@@ -162,3 +162,35 @@ class TestDynamicMicronovaEngine(unittest.TestCase):
         self.assertEqual(ducts_by_id["SX"]["temp_get_key"], "canalization_2sx_temp_air_get")
         self.assertEqual(ducts_by_id["DX"]["speed_get_key"], "canalization_2dx_get")
         self.assertEqual(ducts_by_id["DX"]["temp_get_key"], "canalization_2dx_temp_air_get")
+
+    def test_decode_hardware_buffer_normalizes_work_label_to_travail_normal(self):
+        from datetime import datetime
+        from telemetry.decoder import decode_hardware_buffer
+
+        reg_map = parse_registers_map({
+            "registers_map": [
+                {
+                    "reg_key": "status_get",
+                    "offset": 8,
+                    "formula": "#",
+                    "reg_type": "GET",
+                    "enc_val": [{"lang": "ENG", "value": 5, "description": "Work"}],
+                },
+                {"reg_key": "temp_air_get", "offset": 103, "formula": "#", "reg_type": "GET"},
+            ]
+        })
+        rec = decode_hardware_buffer(
+            raw_buf={8: 5, 103: 20},
+            regs={},
+            r_val={},
+            prev={},
+            settings={},
+            weather={"weather_temp_ext": 10.0, "weather_humidity": 65.0, "weather_wind_kmh": 12.0},
+            comm_mode="simulation",
+            now=datetime(2026, 11, 26, 15, 0, 0),
+            now_str="2026-11-26 15:00:00",
+            dt_hours=0.0,
+            register_map=reg_map,
+        )
+        self.assertEqual(rec["status_code"], 5)
+        self.assertEqual(rec["status_label"], "TRAVAIL (Normal)")

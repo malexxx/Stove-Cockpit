@@ -22,8 +22,25 @@ window.addEventListener("DOMContentLoaded", async () => {
   try { if (typeof renderTriArcCockpit === "function") renderTriArcCockpit(); } catch (e) { console.error("[Init] RenderTriArcPostReady:", e); }
 
   try { if (typeof populateBrandSelects === "function") populateBrandSelects(); } catch (e) { console.error("[Init] Brands:", e); }
+  try { if (typeof collapseAllSettingsAccordions === "function") collapseAllSettingsAccordions(); } catch (e) { console.error("[Init] CollapseAcc:", e); }
   try { if (typeof syncVersionBadges === "function") syncVersionBadges(); } catch (e) { console.error("[Init] Versions:", e); }
   try { if (typeof applyModeVisibility === "function") applyModeVisibility(); } catch (e) { console.error("[Init] ModeVisibility:", e); }
+
+  window.addEventListener("stove-mode-changed", () => {
+    try {
+      if (typeof _syncPrefsToSettingsDom === "function") _syncPrefsToSettingsDom();
+      if (typeof applyModeVisibility === "function") applyModeVisibility();
+    } catch (e) {
+      console.error("[ModeChanged]", e);
+    }
+  });
+  window.addEventListener("stove-prefs-synced", () => {
+    try {
+      if (typeof _syncPrefsToSettingsDom === "function") _syncPrefsToSettingsDom();
+    } catch (e) {
+      console.error("[PrefsSynced]", e);
+    }
+  });
 
   const settingsPane = document.getElementById("subtab-pane-settings");
   if (settingsPane) {
@@ -64,8 +81,15 @@ window.addEventListener("DOMContentLoaded", async () => {
       refreshLatestOnly();
     }
   }, 60000);
-  document.addEventListener("visibilitychange", () => {
+  document.addEventListener("visibilitychange", async () => {
     if (!document.hidden) {
+      if (window.stoveProvider && !window.stoveProvider.isServedByContainer?.() && window.stoveProvider.prefs?.app_mode === "container" && !window.stoveProvider.isContainerActive()) {
+        await window.stoveProvider.resolveActiveMode().catch(() => {});
+        if (window.stoveProvider.isContainerActive()) {
+          if (typeof applyModeVisibility === "function") applyModeVisibility();
+          initSSEStream();
+        }
+      }
       const stale = !connectionState || !connectionState.lastMessageAt || (Date.now() - connectionState.lastMessageAt) > 30000;
       if (stale) refreshLatestOnly();
     }

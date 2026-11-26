@@ -26,6 +26,10 @@ export class ProviderManager {
     this.onStateCallback = null;
     this.lastPayload = null;
     this._lastDirectFetchAt = 0;
+    this._lastContainerProbeAt = 0;
+    this._containerProbeCooldownMs = 10000;
+    this._lastAutoSyncKey = "";
+    this._autoSyncPromise = null;
     this.listenersAttached = false;
   }
 
@@ -80,6 +84,10 @@ export class ProviderManager {
     return this.isContainerActive() ? this.backendVersion : null;
   }
 
+  getAppVersion() {
+    return this.getBackendVersion() || this.getFrontendVersion();
+  }
+
   _recordBackendVersion(payload) {
     if (!payload || typeof payload !== "object") return;
     const raw = payload.backend_version || payload.docker_version || payload.version;
@@ -117,6 +125,7 @@ export class ProviderManager {
       if (health.ok) {
         this.mode = "container";
         this._recordBackendVersion(health.data);
+        this._triggerAutoBidirectionalSync();
         return this.mode;
       }
       const canFallback = this.prefs.fallback_to_cloud !== "0" && Boolean(this.prefs.agua_email && this.prefs.agua_password);
@@ -129,6 +138,62 @@ export class ProviderManager {
     this.mode = "standalone";
     this.backendVersion = null;
     return this.mode;
+  }
+
+  async _ensureContainerPreferredIfAvailable({ force = false } = {}) {
+    if (this.servedByContainer || this.mode === "container") return true;
+    if (this.prefs?.app_mode === "demo") return false;
+    const hasContainerUrl = Boolean(String(this.prefs?.container_url || "").trim());
+    if (!hasContainerUrl) return false;
+    if (this.prefs?.app_mode !== "container" && this.mode !== "fallback") {
+      return false;
+    }
+    const now = Date.now();
+    if (!force && (now - this._lastContainerProbeAt) < this._containerProbeCooldownMs) {
+      return false;
+    }
+    this._lastContainerProbeAt = now;
+    try {
+      const health = await this.container.pingHealth();
+      if (health.ok) {
+        this.mode = "container";
+        this._recordBackendVersion(health.data);
+        this._triggerAutoBidirectionalSync();
+        if (this.onStateCallback) {
+          this.startLiveUpdates(this.onStateCallback);
+        }
+        if (typeof window !== "undefined" && typeof window.dispatchEvent === "function" && typeof CustomEvent === "function") {
+          window.dispatchEvent(new CustomEvent("stove-mode-changed", { detail: { mode: "container" } }));
+        }
+        return true;
+      }
+    } catch {
+      // Conteneur toujours injoignable
+    }
+    return false;
+  }
+
+  _triggerAutoBidirectionalSync() {
+    if (this.servedByContainer || this.mode !== "container") return;
+    const tok = String(this.prefs?.container_api_token || "").trim();
+    if (!tok) return;
+    const url = String(this.prefs?.container_url || "").trim().replace(/\/+$/, "");
+    const syncKey = `${url}|${tok}|${this.hasLocalCloudCredentials() ? "1" : "0"}|${this.hasLocalWeatherConfig() ? "1" : "0"}`;
+    if (this._lastAutoSyncKey === syncKey || this._autoSyncPromise) return;
+    this._lastAutoSyncKey = syncKey;
+    this._autoSyncPromise = this.syncCloudAndWeatherBidirectional({ url, token: tok })
+      .then((res) => {
+        if ((res?.pulledCloud || res?.pulledWeather) && typeof window !== "undefined" && typeof window.dispatchEvent === "function" && typeof CustomEvent === "function") {
+          window.dispatchEvent(new CustomEvent("stove-prefs-synced", { detail: res }));
+        }
+        return res;
+      })
+      .catch(() => {
+        this._lastAutoSyncKey = "";
+      })
+      .finally(() => {
+        this._autoSyncPromise = null;
+      });
   }
 
   _attachPlatformListeners() {
@@ -160,6 +225,9 @@ export class ProviderManager {
   }
 
   async _fetchDirectTelemetryPayload() {
+    if (this.isContainerActive()) {
+      return await this.getLatest();
+    }
     const weatherData = await this.weather.fetchCurrent(this.prefs.weather_lat, this.prefs.weather_lon);
     const rawBuf = await this.agua.readBuffer(this.prefs);
     const decoded = decodeBufferToTelemetry(
@@ -209,9 +277,28 @@ export class ProviderManager {
     return isDefCoords && (!city || city.startsWith("Paris"));
   }
 
+  hasLocalWeatherConfig() {
+    return !this._isDefaultWeather(this.prefs)
+      && Boolean(String(this.prefs?.weather_lat || "").trim() && String(this.prefs?.weather_lon || "").trim());
+  }
+
+  _remoteHasCloudCredentials(remoteSettings) {
+    if (!remoteSettings || typeof remoteSettings !== "object") return false;
+    return Boolean(String(remoteSettings.agua_email || "").trim() && String(remoteSettings.agua_password || "").trim());
+  }
+
+  _remoteHasWeatherConfig(remoteSettings) {
+    if (!remoteSettings || typeof remoteSettings !== "object") return false;
+    return !this._isDefaultWeather(remoteSettings)
+      && Boolean(String(remoteSettings.weather_lat || "").trim() && String(remoteSettings.weather_lon || "").trim());
+  }
+
   async _mirrorContainerSettingsToLocalPrefs(remoteSettings) {
     if (!remoteSettings || typeof remoteSettings !== "object" || this.servedByContainer) return;
-    const sharedKeys = ["weather_city", "weather_lat", "weather_lon", "duct_left_name", "duct_right_name", "hopper_capacity_kg", "cockpit_ui_mode"];
+    const sharedKeys = ["duct_left_name", "duct_right_name", "hopper_capacity_kg", "cockpit_ui_mode"];
+    if (!this.hasLocalWeatherConfig() && this._remoteHasWeatherConfig(remoteSettings)) {
+      sharedKeys.push("weather_city", "weather_lat", "weather_lon");
+    }
     const patch = {};
     for (const k of sharedKeys) {
       const val = remoteSettings[k];
@@ -230,6 +317,9 @@ export class ProviderManager {
   }
 
   async loadDashboard(rangeKey = "24h") {
+    if (this.mode !== "container" && this.mode !== "demo") {
+      await this._ensureContainerPreferredIfAvailable({ force: true });
+    }
     if (this.mode === "container") {
       const r = await this.container.request(`/api/dashboard?range_key=${encodeURIComponent(rangeKey)}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -252,6 +342,9 @@ export class ProviderManager {
   }
 
   async getLatest() {
+    if (this.mode !== "container" && this.mode !== "demo") {
+      await this._ensureContainerPreferredIfAvailable({ force: false });
+    }
     if (this.mode === "container") {
       const r = await this.container.request("/api/latest");
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -273,6 +366,9 @@ export class ProviderManager {
   }
 
   async pollNow(force = false) {
+    if (this.mode !== "container" && this.mode !== "demo") {
+      await this._ensureContainerPreferredIfAvailable({ force: true });
+    }
     if (this.mode === "container") {
       const r = await this.container.request("/api/poll-now", { method: "POST" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -289,6 +385,9 @@ export class ProviderManager {
   }
 
   async sendCommandBatch(commands, extraHeaders = {}) {
+    if (this.mode !== "container" && this.mode !== "demo") {
+      await this._ensureContainerPreferredIfAvailable({ force: true });
+    }
     if (this.mode === "container") {
       const ep = commands.length === 1 ? "/api/command" : "/api/command-batch";
       const body = commands.length === 1 ? commands[0] : { commands };
@@ -308,6 +407,9 @@ export class ProviderManager {
   }
 
   async syncClock() {
+    if (this.mode !== "container" && this.mode !== "demo") {
+      await this._ensureContainerPreferredIfAvailable({ force: true });
+    }
     if (this.mode === "container") {
       const r = await this.container.request("/api/sync-clock", { method: "POST" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -372,6 +474,10 @@ export class ProviderManager {
     this.container.configure(this.prefs.container_url, this.prefs.container_api_token);
     if (cleanPatch.demo_profile) this.demo.setProfile(cleanPatch.demo_profile);
 
+    if (this.mode !== "container" && !cleanPatch.app_mode && this.mode !== "demo") {
+      await this._ensureContainerPreferredIfAvailable({ force: true });
+    }
+
     if (this.mode === "container" && !cleanPatch.app_mode) {
       const r = await this.container.request("/api/settings", {
         method: "POST",
@@ -389,6 +495,15 @@ export class ProviderManager {
   }
 
   async testCloudDirect(cfg) {
+    if (this.mode !== "container" && this.mode !== "demo") {
+      await this._ensureContainerPreferredIfAvailable({ force: true });
+    }
+    if (this.isContainerActive()) {
+      return this._containerJson("/api/test-connection", {
+        method: "POST",
+        body: { comm_mode: "agua_cloud", ...cfg },
+      });
+    }
     const merged = { ...this.prefs, ...cfg };
     if (merged.agua_password === "********") merged.agua_password = this.prefs.agua_password;
     return await this.agua.loginAndDiscover(merged);
@@ -399,9 +514,11 @@ export class ProviderManager {
   }
 
   async reverseGeocode(lat, lon) {
+    if (this.mode !== "container" && this.mode !== "demo") {
+      await this._ensureContainerPreferredIfAvailable({ force: true });
+    }
     if (this.mode === "container") {
-      const r = await this.container.request(`/api/reverse-geocode?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`);
-      if (r.ok) return await r.json();
+      return this._containerJson(`/api/reverse-geocode?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`);
     }
     const city = await this.weather.reverseGeocode(lat, lon);
     return { status: "ok", city, lat: String(lat), lon: String(lon) };
@@ -446,20 +563,23 @@ export class ProviderManager {
     }
 
     // Repli par IP publique (utile en HTTP LAN non sécurisé ou sans capteur GPS)
+    if (this.mode !== "container" && this.mode !== "demo") {
+      await this._ensureContainerPreferredIfAvailable({ force: true });
+    }
     if (this.mode === "container") {
-      try {
-        const r = await this.container.request("/api/geolocate-ip");
-        if (r.ok) {
-          const data = await r.json();
-          const lat = Number(data?.lat);
-          const lon = Number(data?.lon);
-          if (Number.isFinite(lat) && Number.isFinite(lon)) {
-            return { lat, lon, city: String(data?.city || "").trim(), source: "ip" };
-          }
+      const r = await this.container.request("/api/geolocate-ip");
+      if (r.ok) {
+        const data = await r.json();
+        const lat = Number(data?.lat);
+        const lon = Number(data?.lon);
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          return { lat, lon, city: String(data?.city || "").trim(), source: "ip" };
         }
-      } catch {
-        // Repli silencieux sur le client météo direct
       }
+      if (lastError) throw lastError;
+      const err = new Error("Géolocalisation via le conteneur indisponible.");
+      err.code = 2;
+      throw err;
     }
 
     const ipPos = await this.weather.geolocateByIp();
@@ -657,35 +777,142 @@ export class ProviderManager {
   }
 
   hasLocalCloudCredentials() {
-    return Boolean(this.prefs?.agua_email && this.prefs?.agua_password);
+    const email = String(this.prefs?.agua_email || "").trim();
+    const pass = String(this.prefs?.agua_password || "").trim();
+    return Boolean(email && pass && pass !== "********");
   }
 
-  async syncWeatherOnContainerConnect({ url, token } = {}) {
-    if (this.servedByContainer) return;
+  _getContainerClient(targetUrl, targetTok) {
+    const cleanUrl = String(targetUrl || "").trim().replace(/\/+$/, "");
+    const cleanTok = String(targetTok || "").trim();
+    const ownUrl = String(this.container?.baseUrl || "").trim().replace(/\/+$/, "");
+    const ownTok = String(this.container?.apiToken || "").trim();
+    if (cleanUrl === ownUrl && cleanTok === ownTok && this.container) {
+      return this.container;
+    }
+    const client = new ContainerApiClient();
+    client.configure(cleanUrl, cleanTok);
+    return client;
+  }
+
+  async syncCloudAndWeatherBidirectional({ url, token, syncTicket = "" } = {}) {
+    const result = { pushedCloud: false, pushedWeather: false, pulledCloud: false, pulledWeather: false };
+    if (this.servedByContainer) return result;
     const targetUrl = String(url !== undefined ? url : (this.prefs.container_url || "")).trim().replace(/\/+$/, "");
     const targetTok = String(token !== undefined ? token : (this.prefs.container_api_token || "")).trim();
-    const client = new ContainerApiClient();
-    client.configure(targetUrl, targetTok);
+    if (!targetTok) return result;
+
+    const client = this._getContainerClient(targetUrl, targetTok);
+    let remoteSettings = null;
     try {
-      const r = await client.request("/api/dashboard?range_key=24h");
-      if (!r.ok) return;
-      const data = await r.json();
-      const remoteSettings = data?.settings || {};
-      if (!this._isDefaultWeather(this.prefs) && this._isDefaultWeather(remoteSettings)) {
-        await client.request("/api/settings", {
-          method: "POST",
-          body: {
-            weather_city: String(this.prefs.weather_city || ""),
-            weather_lat: String(this.prefs.weather_lat || ""),
-            weather_lon: String(this.prefs.weather_lon || ""),
-          },
-        });
-      } else {
-        await this._mirrorContainerSettingsToLocalPrefs(remoteSettings);
+      let r = await client.request("/api/latest");
+      if (!r || !r.ok) {
+        r = await client.request("/api/dashboard?range_key=24h");
       }
+      if (!r || !r.ok) return result;
+      const data = await r.json();
+      remoteSettings = data?.settings || null;
     } catch {
-      // Repli silencieux si conteneur injoignable
+      return result;
     }
+    if (!remoteSettings || typeof remoteSettings !== "object") return result;
+
+    const phoneHasCloud = this.hasLocalCloudCredentials();
+    const phoneHasWeather = this.hasLocalWeatherConfig();
+    const containerHasCloud = this._remoteHasCloudCredentials(remoteSettings);
+    const containerHasWeather = this._remoteHasWeatherConfig(remoteSettings);
+
+    let remainingTicket = String(syncTicket || "").trim();
+
+    // 1. Téléphone -> Conteneur si le conteneur n'est pas configuré
+    const cloudKeys = [
+      "agua_brand",
+      "agua_api_url",
+      "agua_customer_code",
+      "agua_brand_id",
+      "agua_brand_header",
+      "agua_login_api_url",
+      "agua_email",
+      "agua_password",
+      "agua_uuid",
+      "agua_id_device",
+      "agua_id_product",
+      "stove_name",
+      "hopper_capacity_kg",
+    ];
+    const weatherKeys = ["weather_city", "weather_lat", "weather_lon"];
+    const toPush = {};
+    if (!containerHasCloud && phoneHasCloud) {
+      for (const k of cloudKeys) {
+        const v = this.prefs?.[k];
+        if (v !== undefined && v !== null && String(v) !== "" && String(v) !== "********") {
+          toPush[k] = String(v);
+        }
+      }
+    }
+    if (!containerHasWeather && phoneHasWeather) {
+      for (const k of weatherKeys) {
+        const v = this.prefs?.[k];
+        if (v !== undefined && v !== null && String(v) !== "") {
+          toPush[k] = String(v);
+        }
+      }
+    }
+
+    if (Object.keys(toPush).length > 0) {
+      try {
+        await this.pushCloudCredentialsToContainer({
+          url: targetUrl,
+          token: targetTok,
+          syncTicket: remainingTicket,
+          activateCloudMode: Boolean(!containerHasCloud && phoneHasCloud),
+          credentials: toPush,
+        });
+        remainingTicket = "";
+        result.pushedCloud = Boolean(!containerHasCloud && phoneHasCloud);
+        result.pushedWeather = Boolean(!containerHasWeather && phoneHasWeather);
+      } catch (err) {
+        if (!toPush.agua_email && !toPush.agua_password && toPush.weather_lat && err?.status === 404) {
+          const wr = await client.request("/api/settings", {
+            method: "POST",
+            body: {
+              weather_city: String(this.prefs.weather_city || ""),
+              weather_lat: String(this.prefs.weather_lat || ""),
+              weather_lon: String(this.prefs.weather_lon || ""),
+            },
+          });
+          if (!wr || !wr.ok) throw err;
+          result.pushedWeather = true;
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    // 2. Conteneur -> Téléphone si le téléphone n'est pas configuré
+    const needPullCloud = !phoneHasCloud && containerHasCloud;
+    const needPullWeather = !phoneHasWeather && containerHasWeather;
+    if (needPullCloud) {
+      const pulled = await this.pullCloudCredentialsFromContainer({
+        url: targetUrl,
+        token: targetTok,
+        syncTicket: remainingTicket,
+        onlyMissing: true,
+      });
+      remainingTicket = "";
+      result.pulledCloud = Boolean(pulled && pulled.agua_email);
+      result.pulledWeather = Boolean(needPullWeather && pulled && (pulled.weather_lat || pulled.weather_lon));
+    }
+
+    await this._mirrorContainerSettingsToLocalPrefs(remoteSettings);
+    if (needPullWeather && !result.pulledWeather && this.hasLocalWeatherConfig()) {
+      result.pulledWeather = true;
+    }
+    return result;
+  }
+
+  async syncWeatherOnContainerConnect({ url, token, syncTicket = "" } = {}) {
+    return await this.syncCloudAndWeatherBidirectional({ url, token, syncTicket });
   }
 
   async pushCloudCredentialsToContainer({ url, token, syncTicket = "", activateCloudMode = true, credentials = null } = {}) {
@@ -712,8 +939,7 @@ export class ProviderManager {
     const authProof = cleanTicket;
     const envelope = await encryptCredEnvelope(creds, targetTok, authProof);
 
-    const client = new ContainerApiClient();
-    client.configure(targetUrl, targetTok);
+    const client = this._getContainerClient(targetUrl, targetTok);
     const r = await client.request("/api/system/cloud-credentials/import", {
       method: "POST",
       body: {
@@ -731,7 +957,7 @@ export class ProviderManager {
     return await r.json();
   }
 
-  async pullCloudCredentialsFromContainer({ url, token, syncTicket = "" } = {}) {
+  async pullCloudCredentialsFromContainer({ url, token, syncTicket = "", onlyMissing = false } = {}) {
     const targetUrl = String(url !== undefined ? url : (this.prefs.container_url || "")).trim().replace(/\/+$/, "");
     const targetTok = String(token || this.prefs.container_api_token || "").trim();
     if (!targetTok) {
@@ -740,8 +966,7 @@ export class ProviderManager {
     const cleanTicket = String(syncTicket || "").trim();
     const authProof = cleanTicket;
 
-    const client = new ContainerApiClient();
-    client.configure(targetUrl, targetTok);
+    const client = this._getContainerClient(targetUrl, targetTok);
     const r = await client.request("/api/system/cloud-credentials/export", {
       method: "POST",
       body: cleanTicket ? { sync_ticket: cleanTicket } : {},
@@ -753,24 +978,45 @@ export class ProviderManager {
       throw err;
     }
     const data = await r.json();
-    const creds = await decryptCredEnvelope(data.envelope, targetTok, authProof);
-    Object.assign(this.prefs, creds);
-    await savePrefsPatch(creds);
-    if (creds.weather_lat || creds.weather_lon) {
+    const decrypted = await decryptCredEnvelope(data.envelope, targetTok, authProof);
+    let patchToApply = decrypted;
+    if (onlyMissing) {
+      const weatherKeys = new Set(["weather_city", "weather_lat", "weather_lon"]);
+      const allowCloud = !this.hasLocalCloudCredentials();
+      const allowWeather = !this.hasLocalWeatherConfig();
+      patchToApply = {};
+      for (const [k, v] of Object.entries(decrypted || {})) {
+        if (weatherKeys.has(k)) {
+          if (allowWeather) patchToApply[k] = v;
+        } else if (allowCloud) {
+          patchToApply[k] = v;
+        }
+      }
+    }
+    if (Object.keys(patchToApply).length > 0) {
+      Object.assign(this.prefs, patchToApply);
+      await savePrefsPatch(patchToApply);
+    }
+    if (patchToApply.weather_lat || patchToApply.weather_lon) {
       this.weather.lastFetchTs = 0;
       this.weather.lastCoords = "";
     }
-    this.agua.tokenJwt = null;
-    this.agua.refreshToken = null;
-    this.agua.idDevice = "";
-    this.agua.idProduct = "";
-    this.agua.stoveName = "";
-    this.agua.workingWriteEndpoint = null;
-    this._lastDirectFetchAt = 0;
-    return creds;
+    if (patchToApply.agua_email || patchToApply.agua_password) {
+      this.agua.tokenJwt = null;
+      this.agua.refreshToken = null;
+      this.agua.idDevice = "";
+      this.agua.idProduct = "";
+      this.agua.stoveName = "";
+      this.agua.workingWriteEndpoint = null;
+      this._lastDirectFetchAt = 0;
+    }
+    return patchToApply;
   }
 
   async testConnection(extraHeaders = {}) {
+    if (this.mode !== "container" && this.mode !== "demo") {
+      await this._ensureContainerPreferredIfAvailable({ force: true });
+    }
     if (this.mode === "container") {
       return this._containerJson("/api/test-connection", { method: "POST", headers: extraHeaders });
     }

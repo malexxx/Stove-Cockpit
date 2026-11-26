@@ -399,7 +399,11 @@ input[type="range"]::-webkit-slider-thumb {
 #tab-pellets.hidden,
 #tab-chrono.hidden,
 #tab-dashboard.hidden,
-#tab-installer.hidden {
+#tab-plus-teaser.hidden,
+#tab-installer.hidden,
+#triarc-cockpit-card.hidden,
+.settings-acc-body.hidden,
+[data-requires].hidden {
   display: none !important;
 }
 
@@ -456,7 +460,7 @@ input[type="range"]::-webkit-slider-thumb {
     display: none !important;
   }
 
-  #triarc-cockpit-card {
+  #triarc-cockpit-card:not(.hidden) {
     height: 100%;
     display: flex;
     flex-direction: column;

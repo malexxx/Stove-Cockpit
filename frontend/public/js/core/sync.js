@@ -136,6 +136,11 @@ function applyDashboardState(data, updateSeries = true) {
   const fanSetVal = Number(getRegVal("fan_front_speed", 3));
   const dlSpdVal = Number(getRegVal("duct_left_speed", 0));
   const drSpdVal = Number(getRegVal("duct_right_speed", 0));
+  if (typeof rememberManualFanSpeed === "function") {
+    rememberManualFanSpeed("fan_front_speed", fanSetVal);
+    rememberManualFanSpeed("duct_left_speed", dlSpdVal);
+    rememberManualFanSpeed("duct_right_speed", drSpdVal);
+  }
 
   // Carte 1 : Ambiance Salon
   const ambSp = Number(getRegVal("temp_amb_setpoint", 19));
@@ -217,9 +222,26 @@ function applyDashboardState(data, updateSeries = true) {
   const hoursLeft = Math.round(kgRemaining / effectiveRate);
   document.getElementById("kpi-hop-autonomy").textContent = `~${hoursLeft}h (${kgRemaining.toFixed(1)}kg)`;
 
-  // Mise à jour de l'autonomie au centre du Header principal
+  // Mise à jour de l'autonomie dans la bulle Météo/Pellets du Header principal
   const hdrHopperEl = document.getElementById("hdr-pellet-hopper");
-  if (hdrHopperEl) hdrHopperEl.textContent = `${Math.round(hopPct)}%`;
+  if (hdrHopperEl) {
+    const rawHopPct = latestData.pellet_hopper_pct;
+    const parsedHopPct = (rawHopPct === null || rawHopPct === undefined || rawHopPct === "") ? NaN : Number(rawHopPct);
+    const baseHopCls = "font-bold text-xs sm:text-sm tabular-nums";
+    if (!Number.isFinite(parsedHopPct) || parsedHopPct < 0) {
+      hdrHopperEl.textContent = "?";
+      hdrHopperEl.className = `${baseHopCls} text-amber-400 animate-pulse`;
+    } else if (parsedHopPct > 50) {
+      hdrHopperEl.textContent = `${Math.round(parsedHopPct)}%`;
+      hdrHopperEl.className = `${baseHopCls} text-emerald-400`;
+    } else if (parsedHopPct >= 25) {
+      hdrHopperEl.textContent = `${Math.round(parsedHopPct)}%`;
+      hdrHopperEl.className = `${baseHopCls} text-amber-400`;
+    } else {
+      hdrHopperEl.textContent = `${Math.round(parsedHopPct)}%`;
+      hdrHopperEl.className = `${baseHopCls} text-rose-400`;
+    }
+  }
 
   // Prédiction Runway Stock (DJU & Météo)
   const runwayDays = Number(latestData.runway_days_est ?? 15.0);

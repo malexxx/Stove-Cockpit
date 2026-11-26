@@ -37,14 +37,9 @@
         <strong id="inst-clock-val" class="text-sky-400 font-mono text-xs tabular-nums block mt-0.5">--:--</strong>
       </div>
       <div class="bg-gray-950/80 border border-gray-800/90 rounded-xl p-2.5">
-        <span class="text-gray-400 block text-[10px] uppercase tracking-wider font-semibold">Version Frontend</span>
-        <strong id="cfg-frontend-version" class="text-sky-400 font-mono text-xs truncate block mt-0.5"
-          title="Version de l'application Frontend Stove Cockpit">--</strong>
-      </div>
-      <div class="bg-gray-950/80 border border-gray-800/90 rounded-xl p-2.5">
-        <span class="text-gray-400 block text-[10px] uppercase tracking-wider font-semibold">Version Backend</span>
-        <strong id="cfg-docker-version" class="text-purple-400 font-mono text-xs truncate block mt-0.5"
-          title="Version du serveur Backend / Docker Stove Cockpit">--</strong>
+        <span class="text-gray-400 block text-[10px] uppercase tracking-wider font-semibold">Version</span>
+        <strong id="cfg-app-version" class="text-sky-400 font-mono text-xs truncate block mt-0.5"
+          title="Version Stove Cockpit">--</strong>
       </div>
       <div class="bg-gray-950/80 border border-gray-800/90 rounded-xl p-2.5">
         <span class="text-gray-400 block text-[10px] uppercase tracking-wider font-semibold">Stockage / Volume</span>
@@ -139,7 +134,7 @@
 <div class="settings-acc-item card border-l-4 border-l-indigo-500 overflow-hidden" data-acc-id="pairing"
   data-requires="container-host"
   data-keywords="appairage mobile apk ios iphone android qr code token api key cle lan http">
-  <button type="button" onclick="toggleSettingsAccordion('pairing'); loadPairingInfo();"
+  <button type="button" onclick="toggleSettingsAccordion('pairing')"
     class="w-full px-4 py-3.5 flex items-center justify-between gap-3 text-left hover:bg-gray-800/40 transition cursor-pointer">
     <div class="flex items-center gap-2.5 min-w-0">
       <span class="text-base shrink-0">📱</span>
@@ -213,8 +208,7 @@
         <div
           class="bg-emerald-950/20 border border-emerald-800/50 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
           <span class="text-[11px] text-emerald-200/90">
-            Transférer aussi les identifiants Cloud &amp; la station météo vers l'app via un ticket chiffré AES-256-GCM
-            à usage unique :
+            Transfert chiffré AES-256-GCM automatique et bidirectionnel des identifiants Cloud &amp; météo (vers le téléphone s'il n'est pas configuré, ou vers le conteneur s'il n'est pas configuré) :
           </span>
           <button type="button" id="btn-pairing-cloud-qr" onclick="generateCloudSyncPairingQr()"
             class="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white border border-emerald-500 text-xs font-semibold transition cursor-pointer">

@@ -114,7 +114,7 @@ class TestSilenceAPI(SimulationApiTestCase):
 
             # Vérifier les ordres de bascule :
             # - boost, éco, chrono désactivés (0)
-            # - auto total activé (fun_auto=1, ventilations=8)
+            # - auto flamme seulement activé (fun_auto=1, ventilations=0)
             # - consignes en hors-gel (7°C)
             resp_latest = self.client.get("/api/latest")
             latest_json = resp_latest.json()
@@ -123,9 +123,9 @@ class TestSilenceAPI(SimulationApiTestCase):
             self.assertEqual(regs["standby_set"]["current_val"], 0.0)
             self.assertEqual(regs["chrono_week_enable_set"]["current_val"], 0.0)
             self.assertEqual(regs["fun_auto_set"]["current_val"], 1.0)
-            self.assertEqual(regs["fan_front_speed"]["current_val"], 8.0)
-            self.assertEqual(regs["duct_left_speed"]["current_val"], 8.0)
-            self.assertEqual(regs["duct_right_speed"]["current_val"], 8.0)
+            self.assertEqual(regs["fan_front_speed"]["current_val"], 0.0)
+            self.assertEqual(regs["duct_left_speed"]["current_val"], 0.0)
+            self.assertEqual(regs["duct_right_speed"]["current_val"], 0.0)
             self.assertEqual(regs["temp_amb_setpoint"]["current_val"], 7.0)
             self.assertEqual(regs["duct_left_setpoint"]["current_val"], 7.0)
             self.assertEqual(regs["duct_right_setpoint"]["current_val"], 7.0)
@@ -212,3 +212,164 @@ class TestSilenceAPI(SimulationApiTestCase):
                 conn.commit()
             finally:
                 conn.close()
+
+    def test_silence_override_restores_previous_first_and_eco_boost_deactivate_silence(self):
+        """La surcharge manuelle (ou l'activation Éco/Boost) restaure d'abord l'état précédent avant d'appliquer la nouvelle commande."""
+        import time
+        from database import get_active_mode, get_db
+
+        active_mode = get_active_mode()
+        conn = get_db(active_mode)
+        try:
+            max_ep = conn.execute("SELECT MAX(epoch) FROM telemetry").fetchone()[0] or int(time.time())
+            test_epoch = max_ep + 200
+            conn.execute(
+                "INSERT INTO telemetry (timestamp, epoch, comm_mode, status_code, status_label) VALUES ('2026-11-11 12:15:00', ?, ?, 5, 'TRAVAIL (Normal)')",
+                (test_epoch, active_mode),
+            )
+            for rk, val in [
+                ("temp_amb_setpoint", 21.0),
+                ("fan_front_speed", 4.0),
+                ("fun_auto_set", 0.0),
+                ("standby_set", 0.0),
+                ("fun_pwf_set", 0.0),
+                ("chrono_week_enable_set", 0.0),
+            ]:
+                conn.execute("UPDATE registers_catalog SET current_val = ? WHERE reg_key = ?", (val, rk))
+            conn.commit()
+        finally:
+            conn.close()
+
+        try:
+            # 1. Activer Silence puis appliquer Boost via /api/command
+            self.assertEqual(self.client.post("/api/silence/activate", json={"duration_hours": 1.0}).status_code, 200)
+            conn = get_db(active_mode)
+            try:
+                conn.execute("DELETE FROM command_audit")
+                conn.commit()
+            finally:
+                conn.close()
+
+            resp_boost = self.client.post("/api/command", json={"reg_key": "fun_pwf_set", "value": 1})
+            self.assertEqual(resp_boost.status_code, 200)
+            self.assertFalse(resp_boost.json()["silence_mode"]["active"])
+
+            conn = get_db(active_mode)
+            try:
+                rows = conn.execute("SELECT reg_key, new_value FROM command_audit ORDER BY id ASC").fetchall()
+            finally:
+                conn.close()
+            seq = [(r["reg_key"], r["new_value"]) for r in rows]
+            # La restauration (temp=21, fan=4, pwf=0) doit précéder l'écriture finale fun_pwf_set=1
+            self.assertIn(("temp_amb_setpoint", 21.0), seq)
+            self.assertIn(("fan_front_speed", 4.0), seq)
+            self.assertEqual(seq[-1], ("fun_pwf_set", 1.0))
+
+            # 2. Réactiver Silence puis activer Mode Éco (standby_set=1)
+            self.assertEqual(self.client.post("/api/silence/activate", json={"duration_hours": 1.0}).status_code, 200)
+            resp_eco = self.client.post("/api/command", json={"reg_key": "standby_set", "value": 1})
+            self.assertEqual(resp_eco.status_code, 200)
+            self.assertFalse(resp_eco.json()["silence_mode"]["active"])
+            regs_after = self.client.get("/api/latest").json()["registers"]
+            self.assertEqual(regs_after["standby_set"]["current_val"], 1.0)
+            self.assertEqual(regs_after["temp_amb_setpoint"]["current_val"], 21.0)
+        finally:
+            conn = get_db(active_mode)
+            try:
+                conn.execute("DELETE FROM telemetry WHERE epoch = ?", (test_epoch,))
+                conn.execute("DELETE FROM command_audit")
+                conn.commit()
+            finally:
+                conn.close()
+
+    def test_silence_deactivate_uses_active_chrono_program(self):
+        """Si Chrono était actif avant Silence et qu'un programme est dans la plage horaire, sa consigne prime sur l'état précédent."""
+        import asyncio
+        from datetime import datetime
+        import time
+        from database import get_active_mode, get_db
+        from services.silence_service import activate_silence_mode, deactivate_silence_mode
+
+        active_mode = get_active_mode()
+        conn = get_db(active_mode)
+        try:
+            max_ep = conn.execute("SELECT MAX(epoch) FROM telemetry").fetchone()[0] or int(time.time())
+            test_epoch = max_ep + 300
+            conn.execute(
+                "INSERT INTO telemetry (timestamp, epoch, comm_mode, status_code, status_label) VALUES ('2026-11-11 12:20:00', ?, ?, 5, 'TRAVAIL (Normal)')",
+                (test_epoch, active_mode),
+            )
+            for rk, val in [
+                ("chrono_week_enable_set", 1.0),
+                ("temp_amb_setpoint", 18.0),
+                ("power_level", 2.0),
+                ("fan_front_speed", 2.0),
+                ("duct_left_setpoint", 18.0),
+                ("duct_left_speed", 1.0),
+                ("duct_right_setpoint", 18.0),
+                ("duct_right_speed", 1.0),
+                # P1 : tous les jours, 08:00 (48) -> 10:00 (60)
+                ("chrono_p1_start_set", 48.0),
+                ("chrono_p1_stop_set", 60.0),
+                ("chrono_p1_days_mask", 127.0),
+                ("chrono_p1_temperature_set", 22.0),
+                ("chrono_p1_power_set", 6.0),
+                ("chrono_p1_fan_front_set", 5.0),
+                ("chrono_p1_tcanl_set", 23.0),
+                ("chrono_p1_canl_set", 4.0),
+                ("chrono_p1_tcanr_set", 21.0),
+                ("chrono_p1_canr_set", 3.0),
+            ]:
+                conn.execute("UPDATE registers_catalog SET current_val = ? WHERE reg_key = ?", (val, rk))
+            conn.commit()
+        finally:
+            conn.close()
+
+        try:
+            asyncio.run(activate_silence_mode(1.0))
+            # 09:00 -> dans le créneau P1 (08:00-10:00)
+            asyncio.run(deactivate_silence_mode(now_dt=datetime(2026, 11, 11, 9, 0, 0)))
+            regs = self.client.get("/api/latest").json()["registers"]
+            self.assertEqual(regs["chrono_week_enable_set"]["current_val"], 1.0)
+            self.assertEqual(regs["temp_amb_setpoint"]["current_val"], 22.0)
+            self.assertEqual(regs["power_level"]["current_val"], 6.0)
+            self.assertEqual(regs["fan_front_speed"]["current_val"], 5.0)
+            self.assertEqual(regs["duct_left_setpoint"]["current_val"], 23.0)
+            self.assertEqual(regs["duct_left_speed"]["current_val"], 4.0)
+            self.assertEqual(regs["duct_right_setpoint"]["current_val"], 21.0)
+            self.assertEqual(regs["duct_right_speed"]["current_val"], 3.0)
+        finally:
+            conn = get_db(active_mode)
+            try:
+                conn.execute("DELETE FROM telemetry WHERE epoch = ?", (test_epoch,))
+                conn.commit()
+            finally:
+                conn.close()
+
+    def test_silence_override_preserves_explicit_offset_and_paris_tz(self):
+        """Vérifie la conservation de l'offset explicite des surcharges et le fuseau Europe/Paris de Chrono."""
+        from datetime import datetime
+        from unittest.mock import patch
+        from zoneinfo import ZoneInfo
+
+        from services.silence_service import _build_override_commands, _find_active_chrono_program
+
+        cmds = _build_override_commands(
+            [{"reg_key": "custom_reg", "value": 42, "offset": 33999}],
+            regs={},
+        )
+        self.assertEqual(cmds, [{"reg_key": "custom_reg", "value": 42.0, "offset": 33999}])
+
+        with patch("services.silence_service.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 11, 11, 9, 0, 0, tzinfo=ZoneInfo("Europe/Paris"))
+            prog = _find_active_chrono_program(
+                {
+                    "chrono_p1_start_set": {"current_val": 48.0},
+                    "chrono_p1_stop_set": {"current_val": 60.0},
+                    "chrono_p1_days_mask": {"current_val": 127.0},
+                    "chrono_p1_temperature_set": {"current_val": 21.5},
+                }
+            )
+            mock_dt.now.assert_called_once_with(ZoneInfo("Europe/Paris"))
+            self.assertIsNotNone(prog)
+            self.assertEqual(prog["values"]["temp_amb_setpoint"], 21.5)

@@ -178,12 +178,12 @@ function switchTab(tabId) {
       if (typeof renderEepromTable === "function") renderEepromTable();
       _nobisTabDirty["tab-installer"] = false;
     }
+    if (typeof collapseAllSettingsAccordions === "function") {
+      collapseAllSettingsAccordions();
+    }
     updateSettingsAccordionSummaries();
     if (window.stoveProvider?.isServedByContainer?.() && typeof loadPairingInfo === "function") {
       loadPairingInfo();
-    }
-    if (openSettingsAccId) {
-      toggleSettingsAccordion(openSettingsAccId, true);
     }
   }
 }
@@ -212,7 +212,7 @@ function getFrontendVersionLabel() {
     window.stoveProvider?.getFrontendVersion?.() ||
     window.STOVE_FRONTEND_VERSION ||
     window.StoveCore?.frontendVersionTag ||
-    "v0.0.8"
+    "v0.0.9"
   );
 }
 
@@ -225,75 +225,154 @@ function getBackendVersionLabel(rawBackendVer = null) {
   return _formatVerTag(raw);
 }
 
-function syncVersionBadges(rawBackendVer = null) {
-  const frontVer = getFrontendVersionLabel();
+function getUnifiedVersionLabel(rawBackendVer = null) {
   const backVer = getBackendVersionLabel(rawBackendVer);
-  const isContainer = Boolean(window.stoveProvider?.isContainerActive?.());
-
-  const hdrFront = document.getElementById("hdr-frontend-version-badge");
-  if (hdrFront) hdrFront.textContent = `📱 Front ${frontVer}`;
-  const cfgFront = document.getElementById("cfg-frontend-version");
-  if (cfgFront) cfgFront.textContent = frontVer;
-
-  const hdrBack = document.getElementById("hdr-docker-version-badge");
-  if (hdrBack) hdrBack.textContent = backVer ? `🐳 Back ${backVer}` : "🐳 Back --";
-  const cfgBack = document.getElementById("cfg-docker-version");
-  if (cfgBack) cfgBack.textContent = backVer || "--";
-
-  const diffBadge = document.getElementById("hdr-version-diff-badge");
-  if (diffBadge) {
-    const differs =
-      isContainer &&
-      Boolean(frontVer && backVer) &&
-      frontVer.replace(/^v/i, "") !== backVer.replace(/^v/i, "");
-    diffBadge.classList.toggle("hidden", !differs);
-    if (differs) {
-      diffBadge.title = `Frontend ${frontVer} connecté au Backend ${backVer}`;
-    }
-  }
+  return backVer || getFrontendVersionLabel();
 }
 
-// Met à jour la couleur du rectangle global autour des 2 pictos (vert uniquement si les 2 pictos sont verts)
+function syncVersionBadges(rawBackendVer = null) {
+  const appVer = getUnifiedVersionLabel(rawBackendVer);
+
+  const hdrVer = document.getElementById("hdr-app-version-badge");
+  if (hdrVer) hdrVer.textContent = appVer;
+  const cfgVer = document.getElementById("cfg-app-version");
+  if (cfgVer) cfgVer.textContent = appVer;
+}
+
+// Met à jour la couleur du rectangle global et la chaîne directionnelle dans la pilule d'état
 function updateStatusPillBorder() {
   const pillEl = document.getElementById("hdr-status-pill");
   if (!pillEl) return;
-  const frontVer = getFrontendVersionLabel();
-  const backVer = getBackendVersionLabel();
-  const verLabel = backVer ? `App ${frontVer} / Serveur ${backVer}` : `App ${frontVer}`;
+
+  const pm = window.stoveProvider;
+  const appMode = pm ? pm.getMode() : "container";
+  const servedByContainer = Boolean(pm?.isServedByContainer?.());
+  const showPhone = !servedByContainer;
+  const showContainerNode = servedByContainer || appMode === "container";
+  const showBypass = !servedByContainer && appMode === "fallback";
+  const showArrow1 = showPhone && !showBypass;
+  const showArrow2 = showContainerNode;
+
+  const phoneEl = document.getElementById("hdr-conn-phone");
+  const arrow1El = document.getElementById("hdr-conn-arrow-1");
+  const bypassEl = document.getElementById("hdr-conn-bypass");
+  const verEl = document.getElementById("hdr-container-version");
+  const arrow2El = document.getElementById("hdr-conn-arrow-2");
+  const modeBtn = document.getElementById("hdr-mode-conn-btn");
+  const bypassArrowEl = bypassEl ? bypassEl.querySelector(".hdr-bypass-arrow") : null;
+
+  if (phoneEl) phoneEl.classList.toggle("hidden", !showPhone);
+  if (arrow1El) arrow1El.classList.toggle("hidden", !showArrow1);
+  if (bypassEl) bypassEl.classList.toggle("hidden", !showBypass);
+  if (verEl) verEl.classList.toggle("hidden", !showContainerNode);
+  if (arrow2El) arrow2El.classList.toggle("hidden", !showArrow2);
+
+  const verLabel = getUnifiedVersionLabel();
   const cState = connectionState.containerStatus;
   const mState = connectionState.cloudStatus;
+  const activeMode = getActiveCommMode();
 
-  if (cState === "connected" && mState === "connected") {
-    pillEl.className = "flex items-center gap-1.5 px-2.5 py-1 sm:py-1.5 rounded-xl border bg-emerald-950/60 border-emerald-500/70 shadow-[0_0_10px_rgba(16,185,129,0.25)] cursor-pointer transition-all duration-200 hover:brightness-110";
-    pillEl.title = `Liaison active (${verLabel}) • Cliquer pour ouvrir les réglages`;
-  } else if (cState === "disconnected" || mState === "disconnected") {
-    pillEl.className = "flex items-center gap-1.5 px-2.5 py-1 sm:py-1.5 rounded-xl border bg-rose-950/75 border-rose-500/80 shadow-[0_0_12px_rgba(244,63,94,0.35)] animate-pulse cursor-pointer transition-all duration-200 hover:brightness-110";
-    pillEl.title = `Anomalie de connexion (${verLabel}) • Cliquer pour ouvrir les réglages`;
-  } else {
-    pillEl.className = "flex items-center gap-1.5 px-2.5 py-1 sm:py-1.5 rounded-xl border bg-amber-950/70 border-amber-500/80 shadow-[0_0_12px_rgba(245,158,11,0.35)] cursor-pointer transition-all duration-200 hover:brightness-110";
-    pillEl.title = `Mode dégradé / simulation ou synchronisation (${verLabel}) • Cliquer pour ouvrir les réglages`;
+  let targetName = "Cloud Micronova";
+  if (appMode === "demo" || activeMode === "simulation") {
+    targetName = appMode === "demo" ? "Démo" : "Simulation";
+  } else if (appMode === "container" && activeMode === "local_gateway") {
+    targetName = "ESP32";
   }
+
+  const basePill = "flex items-center gap-1 px-2.5 py-1 sm:py-1.5 rounded-xl border cursor-pointer transition-all duration-200 hover:brightness-110";
+  const iconCls = "flex items-center justify-center w-4 h-4 sm:w-[18px] sm:h-[18px]";
+  const arrowCls = "flex items-center justify-center w-3 h-3";
+  const btnCls = "flex items-center justify-center hover:scale-110 transition-transform cursor-pointer";
+
+  const setColor = (el, base, color) => {
+    if (el) el.className = `${base} ${color}`;
+  };
+  const setBypassArrowColor = (color) => {
+    if (bypassArrowEl) bypassArrowEl.setAttribute("class", `hdr-bypass-arrow ${color}`);
+  };
+
+  if (showContainerNode && cState === "disconnected") {
+    pillEl.className = `${basePill} bg-rose-950/75 border-rose-500/80 shadow-[0_0_12px_rgba(244,63,94,0.35)] animate-pulse`;
+    pillEl.title = `Conteneur injoignable (${verLabel}) • Cliquer pour ouvrir les réglages`;
+    if (showPhone) setColor(phoneEl, iconCls, "text-gray-300");
+    if (showArrow1) setColor(arrow1El, arrowCls, "text-rose-400 animate-pulse");
+    if (showArrow2) setColor(arrow2El, arrowCls, "text-gray-500/60");
+    if (modeBtn) modeBtn.className = `${btnCls} text-gray-500`;
+    return;
+  }
+
+  if (mState === "disconnected") {
+    pillEl.className = `${basePill} bg-rose-950/75 border-rose-500/80 shadow-[0_0_12px_rgba(244,63,94,0.35)] animate-pulse`;
+    pillEl.title = `Anomalie de connexion ${targetName} (${verLabel}) • Cliquer pour ouvrir les réglages`;
+    if (showPhone) setColor(phoneEl, iconCls, showContainerNode ? "text-emerald-400" : "text-rose-400");
+    if (showArrow1) setColor(arrow1El, arrowCls, showContainerNode ? "text-emerald-400/90" : "text-rose-400 animate-pulse");
+    if (showBypass) setBypassArrowColor("text-rose-400 animate-pulse");
+    if (showArrow2) setColor(arrow2El, arrowCls, "text-rose-400 animate-pulse");
+    if (modeBtn) modeBtn.className = `${btnCls} text-rose-400 animate-pulse`;
+    return;
+  }
+
+  if ((showContainerNode && cState === "connecting") || mState === "connecting") {
+    pillEl.className = `${basePill} bg-amber-950/70 border-amber-500/80 shadow-[0_0_12px_rgba(245,158,11,0.35)]`;
+    pillEl.title = `Synchronisation en cours (${verLabel}) • Cliquer pour ouvrir les réglages`;
+    const cConnecting = showContainerNode && cState === "connecting";
+    const mConnecting = mState === "connecting";
+    if (showPhone) setColor(phoneEl, iconCls, (cConnecting || (!showContainerNode && mConnecting)) ? "text-amber-400 animate-pulse" : "text-emerald-400");
+    if (showArrow1) setColor(arrow1El, arrowCls, (cConnecting || (!showContainerNode && mConnecting)) ? "text-amber-400 animate-pulse" : "text-emerald-400/90");
+    if (showBypass) setBypassArrowColor(mConnecting ? "text-amber-400 animate-pulse" : "text-sky-400");
+    if (showArrow2) setColor(arrow2El, arrowCls, mConnecting ? "text-amber-400 animate-pulse" : "text-emerald-400/90");
+    if (modeBtn) modeBtn.className = `${btnCls} ${mConnecting ? "text-amber-400 animate-pulse" : "text-emerald-400"}`;
+    return;
+  }
+
+  if (showBypass && mState === "connected") {
+    pillEl.className = `${basePill} bg-sky-950/65 border-sky-500/75 shadow-[0_0_10px_rgba(56,189,248,0.28)]`;
+    pillEl.title = `Repli Cloud actif (Conteneur hors portée • ${verLabel}) • Cliquer pour ouvrir les réglages`;
+    if (showPhone) setColor(phoneEl, iconCls, "text-sky-400");
+    setBypassArrowColor("text-sky-400");
+    if (modeBtn) modeBtn.className = `${btnCls} text-sky-400`;
+    return;
+  }
+
+  if (appMode === "demo" || mState === "simulation") {
+    pillEl.className = `${basePill} bg-amber-950/70 border-amber-500/80 shadow-[0_0_12px_rgba(245,158,11,0.35)]`;
+    pillEl.title = `Mode ${targetName} actif (${verLabel}) • Cliquer pour ouvrir les réglages`;
+    if (showPhone) setColor(phoneEl, iconCls, (showContainerNode && cState === "connected") ? "text-emerald-400" : "text-amber-400");
+    if (showArrow1) setColor(arrow1El, arrowCls, showContainerNode ? "text-emerald-400/90" : "text-amber-400");
+    if (showArrow2) setColor(arrow2El, arrowCls, "text-amber-400");
+    if (modeBtn) modeBtn.className = `${btnCls} text-amber-400`;
+    return;
+  }
+
+  pillEl.className = `${basePill} bg-emerald-950/60 border-emerald-500/70 shadow-[0_0_10px_rgba(16,185,129,0.25)]`;
+  if (appMode === "standalone") {
+    pillEl.title = `Mode Autonome Cloud (${verLabel}) • Cliquer pour ouvrir les réglages`;
+  } else if (servedByContainer) {
+    pillEl.title = `Conteneur → ${targetName} (${verLabel}) • Cliquer pour ouvrir les réglages`;
+  } else {
+    pillEl.title = `Mode « + » Conteneur → ${targetName} (${verLabel}) • Cliquer pour ouvrir les réglages`;
+  }
+  if (showPhone) setColor(phoneEl, iconCls, "text-emerald-400");
+  if (showArrow1) setColor(arrow1El, arrowCls, "text-emerald-400/90");
+  if (showArrow2) setColor(arrow2El, arrowCls, "text-emerald-400/90");
+  if (modeBtn) modeBtn.className = `${btnCls} text-emerald-400`;
 }
 
 // Met à jour l'indicateur visuel de connexion au conteneur Docker Stove Cockpit (picto Docker)
 function updateContainerConnectionIndicator(overrideStatus, message) {
   const verEl = document.getElementById("hdr-container-version");
-  const sepEl = document.getElementById("hdr-container-sep");
   const cfgDiagContainer = document.getElementById("cfg-diag-container");
 
   const appMode = window.stoveProvider ? window.stoveProvider.getMode() : "container";
-  const frontVer = getFrontendVersionLabel();
+  const servedByContainer = Boolean(window.stoveProvider?.isServedByContainer?.());
   const dockerVer = getBackendVersionLabel() || "Backend";
 
-  if (appMode !== "container") {
+  if (appMode !== "container" && !servedByContainer) {
     connectionState.containerStatus = "connected";
-    if (sepEl) sepEl.classList.add("hidden");
     if (verEl) verEl.classList.add("hidden");
     updateStatusPillBorder();
     return;
   }
-
-  if (sepEl) sepEl.classList.remove("hidden");
 
   const effectiveStatus = overrideStatus || (connectionState.isServerConnected ? "connected" : "disconnected");
   connectionState.containerStatus = effectiveStatus;
@@ -343,16 +422,18 @@ function updateContainerConnectionIndicator(overrideStatus, message) {
 
 const MODE_CONN_ICONS = {
   agua_cloud: `<svg viewBox="0 0 24 24" class="w-4 h-4 sm:w-[18px] sm:h-[18px]" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" /></svg>`,
-  local_gateway: `<svg viewBox="0 0 24 24" class="w-4 h-4 sm:w-[18px] sm:h-[18px]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2" /><rect x="9" y="9" width="6" height="6" /><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4" /></svg>`,
+  local_gateway: `<svg viewBox="0 0 24 24" class="w-4 h-4 sm:w-[18px] sm:h-[18px]" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="17" rx="1.6" /><path d="M8.5 7.2V5.4h1.7v1.8h1.7V5.4h1.7v1.8h1.9" /><rect x="8.5" y="9.8" width="7" height="5.4" rx="0.6" /><rect x="10" y="17.6" width="4" height="2.4" rx="0.4" /><path d="M4.2 10.5H6M4.2 13.5H6M4.2 16.5H6M18 10.5h1.8M18 13.5h1.8M18 16.5h1.8" /></svg>`,
   simulation: `<svg viewBox="0 0 24 24" class="w-4 h-4 sm:w-[18px] sm:h-[18px]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v5.5L5.2 17.6A2 2 0 0 0 7 20.5h10a2 2 0 0 0 1.8-2.9L14 8.5V3" /><path d="M7.5 15h9" /></svg>`,
 };
 
-// Met à jour le pictogramme unique de mode (Cloud / ESP / Simulation) colorisé vert/orange/rouge selon la connexion
+// Met à jour le pictogramme cible (Cloud / ESP32 / Simulation) et reflète son état dans la pilule
 function updateCloudConnectionIndicator(overrideStatus, message) {
   const modeBtn = document.getElementById("hdr-mode-conn-btn");
   const modeIcon = document.getElementById("hdr-mode-conn-icon");
   const cfgDiagCloud = document.getElementById("cfg-diag-cloud");
 
+  const pm = window.stoveProvider;
+  const appMode = pm ? pm.getMode() : "container";
   const st = Number(latestData.status_code ?? 0);
   const activeMode = (connectionState.commStatus && connectionState.commStatus.comm_mode) ||
     latestData.comm_mode ||
@@ -360,26 +441,31 @@ function updateCloudConnectionIndicator(overrideStatus, message) {
     "agua_cloud";
   currentCommMode = activeMode;
 
+  let targetIconKey = activeMode;
   let modeName = "Cloud Micronova";
-  if (window.stoveProvider?.getMode() === "demo") {
+  if (appMode === "demo") {
+    targetIconKey = "simulation";
     modeName = "Démo";
-  } else if (window.stoveProvider?.getMode() === "fallback") {
+  } else if (appMode === "standalone") {
+    targetIconKey = "agua_cloud";
+    modeName = "Cloud Micronova";
+  } else if (appMode === "fallback") {
+    targetIconKey = "agua_cloud";
     modeName = "Repli Cloud";
   } else if (activeMode === "local_gateway") {
-    modeName = "ESP / Passerelle UART";
+    modeName = "ESP32 / Passerelle UART";
   } else if (activeMode === "simulation") {
     modeName = "Simulation";
   }
 
   if (modeIcon) {
-    modeIcon.innerHTML = MODE_CONN_ICONS[activeMode] || MODE_CONN_ICONS.agua_cloud;
+    modeIcon.innerHTML = MODE_CONN_ICONS[targetIconKey] || MODE_CONN_ICONS.agua_cloud;
   }
 
-  // Cas 1 : Si le conteneur lui-même est inaccessible -> Pictogramme Rouge
-  if (!connectionState.isServerConnected) {
+  // Cas 1 : Si le conteneur lui-même est inaccessible (hors repli/standalone) -> Pictogramme grisé/rouge
+  if (appMode === "container" && !connectionState.isServerConnected) {
     connectionState.cloudStatus = "disconnected";
     if (modeBtn) {
-      modeBtn.className = "flex items-center justify-center text-rose-400 animate-pulse hover:scale-110 transition-transform cursor-pointer";
       modeBtn.title = `Mode ${modeName} • Liaison indisponible (conteneur déconnecté)`;
     }
     if (cfgDiagCloud) {
@@ -390,11 +476,10 @@ function updateCloudConnectionIndicator(overrideStatus, message) {
     return;
   }
 
-  // Cas 2 : Reconnexion / Actualisation en cours -> Pictogramme Orange
+  // Cas 2 : Reconnexion / Actualisation en cours -> Pictogramme Ambre
   if (overrideStatus === "connecting") {
     connectionState.cloudStatus = "connecting";
     if (modeBtn) {
-      modeBtn.className = "flex items-center justify-center text-amber-400 animate-pulse hover:scale-110 transition-transform cursor-pointer";
       modeBtn.title = `Mode ${modeName} • Synchronisation en cours...`;
     }
     if (cfgDiagCloud) {
@@ -410,12 +495,11 @@ function updateCloudConnectionIndicator(overrideStatus, message) {
     (commStatus && commStatus.connected === false) ||
     (st === -1);
 
-  // Cas 3 : Conteneur connecté, mais communication perdue -> Pictogramme Rouge
+  // Cas 3 : Communication perdue -> Pictogramme Rouge
   if (isCloudOffline) {
     connectionState.cloudStatus = "disconnected";
     const reason = (commStatus && commStatus.last_error) || "Rupture de communication ou poêle éteint";
     if (modeBtn) {
-      modeBtn.className = "flex items-center justify-center text-rose-400 animate-pulse hover:scale-110 transition-transform cursor-pointer";
       modeBtn.title = `Mode ${modeName} • Perte de communication (${reason}) • Cliquer pour actualiser`;
     }
     if (cfgDiagCloud) {
@@ -426,28 +510,26 @@ function updateCloudConnectionIndicator(overrideStatus, message) {
     return;
   }
 
-  // Cas 4 : Mode Simulation actif (virtuel) -> Pictogramme Orange
-  if (activeMode === "simulation") {
+  // Cas 4 : Mode Simulation ou Démo actif (virtuel) -> Pictogramme Ambre
+  if (appMode === "demo" || activeMode === "simulation") {
     connectionState.cloudStatus = "simulation";
     if (modeBtn) {
-      modeBtn.className = "flex items-center justify-center text-amber-400 hover:scale-110 transition-transform cursor-pointer";
-      modeBtn.title = "Mode Simulation actif (données virtuelles) • Cliquer pour actualiser";
+      modeBtn.title = `Mode ${modeName} actif (données virtuelles) • Cliquer pour actualiser`;
     }
     if (cfgDiagCloud) {
       cfgDiagCloud.className = "text-[11px] font-semibold text-amber-400 flex items-center gap-1.5";
-      cfgDiagCloud.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400"></span>Simulation (${escapeHtml(activeMode)})`;
+      cfgDiagCloud.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400"></span>${escapeHtml(modeName)} (${escapeHtml(activeMode)})`;
     }
     updateStatusPillBorder();
     return;
   }
 
-  // Cas 5 : Tout est connecté et synchronisé -> Pictogramme Vert
+  // Cas 5 : Tout est connecté et synchronisé -> Pictogramme Vert (ou Sky en Repli Cloud)
   connectionState.cloudStatus = "connected";
   const lastTime = (commStatus && commStatus.last_sync_time) || latestData.timestamp || "";
   const lastSyncStr = lastTime ? ` • Synchro : ${lastTime.slice(11, 19)}` : "";
 
   if (modeBtn) {
-    modeBtn.className = "flex items-center justify-center text-emerald-400 hover:scale-110 transition-transform cursor-pointer";
     modeBtn.title = `Mode ${modeName} • Liaison active${lastSyncStr} • Cliquer pour forcer l'actualisation`;
   }
   if (cfgDiagCloud) {

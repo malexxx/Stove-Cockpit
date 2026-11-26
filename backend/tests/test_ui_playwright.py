@@ -57,7 +57,7 @@ def _fulfill_static_route(route, url: str) -> None:
     route.fulfill(status=404, body="Not Found")
 
 
-def _attach_app_routes(page: Page, backend_version: str = "0.0.8") -> None:
+def _attach_app_routes(page: Page, backend_version: str = "0.0.9") -> None:
     """Sert la SPA assemblée, les fichiers statiques depuis le disque et mocke les endpoints /api/*."""
     assembled_html = render_spa_html()
 
@@ -433,8 +433,8 @@ def test_ui_silence_container_only(page: Page):
     assert res["demo"]["hasNoTimerLabel"] is True
 
 
-def test_ui_independent_frontend_backend_versions(browser_instance):
-    """Vérifie l'affichage distinct des versions Frontend et Backend lorsqu'elles diffèrent."""
+def test_ui_unified_app_version(browser_instance):
+    """Vérifie l'affichage d'une version unifiée unique dans l'en-tête et État Système."""
     context = browser_instance.new_context(viewport={"width": 1280, "height": 800})
     page = context.new_page()
     _attach_app_routes(page, backend_version="9.8.7")
@@ -444,19 +444,23 @@ def test_ui_independent_frontend_backend_versions(browser_instance):
     res = page.evaluate("""() => {
         switchTab("tab-installer");
         return {
-            hdrFront: document.getElementById("hdr-frontend-version-badge").textContent.trim(),
-            hdrBack: document.getElementById("hdr-docker-version-badge").textContent.trim(),
-            cfgFront: document.getElementById("cfg-frontend-version").textContent.trim(),
-            cfgBack: document.getElementById("cfg-docker-version").textContent.trim(),
-            diffVisible: !document.getElementById("hdr-version-diff-badge").classList.contains("hidden"),
+            hdrVer: document.getElementById("hdr-app-version-badge").textContent.trim(),
+            cfgVer: document.getElementById("cfg-app-version").textContent.trim(),
+            legacyFront: document.getElementById("hdr-frontend-version-badge"),
+            legacyBack: document.getElementById("hdr-docker-version-badge"),
+            legacyDiff: document.getElementById("hdr-version-diff-badge"),
+            legacyCfgFront: document.getElementById("cfg-frontend-version"),
+            legacyCfgBack: document.getElementById("cfg-docker-version"),
         };
     }""")
 
-    assert res["hdrFront"] == "📱 Front v0.0.8"
-    assert res["hdrBack"] == "🐳 Back v9.8.7"
-    assert res["cfgFront"] == "v0.0.8"
-    assert res["cfgBack"] == "v9.8.7"
-    assert res["diffVisible"] is True
+    assert res["hdrVer"] == "v9.8.7"
+    assert res["cfgVer"] == "v9.8.7"
+    assert res["legacyFront"] is None
+    assert res["legacyBack"] is None
+    assert res["legacyDiff"] is None
+    assert res["legacyCfgFront"] is None
+    assert res["legacyCfgBack"] is None
     context.close()
 
 
@@ -561,3 +565,212 @@ def test_ui_cockpit_11_modes_settings_and_hydro_safety(browser_instance):
         assert all(res["hydroOk"].values()), f"Erreur profil Hydro sur {viewport}: {res['hydroOk']}"
         assert page_errors == [], f"Erreurs JS sur {viewport}: {page_errors}"
         context.close()
+
+
+def test_ui_ux_uniformity_and_mobile_plus_activation(browser_instance):
+    """Vérifie Pending Bar Tri-Arc, bouton ON vert/rouge, pictos Auto barrés, SX/DX, indicateurs mobile et activation Mode +."""
+    context = browser_instance.new_context(viewport={"width": 375, "height": 667})
+    page = context.new_page()
+    page_errors = []
+    page.on("pageerror", lambda err: page_errors.append(str(err)))
+    _attach_app_routes(page)
+    page.goto(f"{APP_ORIGIN}/", wait_until="load")
+    page.wait_for_function("() => window.stoveProvider && window.stoveProvider.servedByContainer === true")
+
+    res = page.evaluate("""async () => {
+        // 1. Vérifier libellé Work -> TRAVAIL / Normal et bouton OFF rouge quand st=5
+        applyDashboardState({
+            latest: {
+                status_code: 5,
+                status_label: "Work",
+                temp_ambient: 20.0,
+                temp_amb_setpoint: 21,
+                fan_front_speed: 3,
+                fun_auto_set: 0
+            }
+        }, false);
+        const phaseText = document.getElementById("triarc-slide-AMB").textContent;
+        const pwrBtnOff = document.querySelector("#triarc-slide-AMB button[onclick='handleDynamicPowerAction()']");
+        const offIsRose = pwrBtnOff.className.includes("bg-rose-600");
+
+        // 2. Bouton ON vert quand st=0
+        applyDashboardState({
+            latest: { status_code: 0, status_label: "OFF (Éteint)", temp_ambient: 19.0, temp_amb_setpoint: 21, fan_front_speed: 3, fun_auto_set: 0 }
+        }, false);
+        const pwrBtnOn = document.querySelector("#triarc-slide-AMB button[onclick='handleDynamicPowerAction()']");
+        const onIsEmerald = pwrBtnOn.className.includes("bg-emerald-600");
+
+        // 3. Pending Bar généralisée sur Tri-Arc (pas de modale bloquante)
+        cockpitStepTemp("AMB", 1);
+        const triArcPendingExists = Boolean(document.querySelector("#triarc-pending-bar-slot #cockpit-pending-bar"));
+        cancelTriArcPendingChanges();
+
+        // 4. Pictos Auto barrés (1=Flamme barrée, 3=Ventil barré, 2=aucun barré)
+        const countSlashes = () => {
+            const btn = document.querySelector("#triarc-slide-AMB button[onclick=\\"toggleTriArcOptionBubble('auto')\\"]");
+            return btn ? btn.querySelectorAll("line").length : -1;
+        };
+        applyDashboardState({ latest: { status_code: 5, fan_front_speed: 8, fun_auto_set: 0 } }, false);
+        const slashVentOnly = countSlashes();
+        applyDashboardState({ latest: { status_code: 5, fan_front_speed: 3, fun_auto_set: 1 } }, false);
+        const slashFlameOnly = countSlashes();
+        applyDashboardState({ latest: { status_code: 5, fan_front_speed: 8, fun_auto_set: 1 } }, false);
+        const slashAutoBoth = countSlashes();
+
+        // 5. Monopage sur smartphone : #triarc-cockpit-card masqué en mode alternatif (display:none) et ordre SX -> Salon -> DX
+        await setActiveCockpitUiMode("thermostat", { persist: false, silent: true });
+        const triCardDisplayAlt = getComputedStyle(document.getElementById("triarc-cockpit-card")).display;
+        const zoneOrder = Array.from(document.querySelectorAll("#cockpit-alt-root button[onclick^='cockpitSelectZone']"))
+            .map(b => b.getAttribute("onclick"));
+
+        // 6. Activation Mode + sur smartphone (standalone -> container) met à jour la barre basse & header
+        window.stoveProvider.servedByContainer = false;
+        window.stoveProvider.mode = "standalone";
+        applyModeVisibility();
+        const standalonePelletsDisplay = getComputedStyle(document.getElementById("mob-btn-tab-pellets")).display;
+        const standalonePlusDisplay = getComputedStyle(document.getElementById("mob-btn-tab-plus-teaser")).display;
+
+        document.getElementById("cfg-app-mode").value = "container";
+        document.getElementById("cfg-plus-url").value = window.location.origin;
+        document.getElementById("cfg-plus-token").value = "tok-test";
+        await savePlusModeSettings();
+        const plusActiveMode = window.stoveProvider.getMode();
+        const containerPelletsDisplay = getComputedStyle(document.getElementById("mob-btn-tab-pellets")).display;
+        const containerPlusDisplay = getComputedStyle(document.getElementById("mob-btn-tab-plus-teaser")).display;
+        const containerHopperDisplay = getComputedStyle(document.getElementById("hdr-hopper-pill")).display;
+
+        return {
+            phaseText,
+            offIsRose,
+            onIsEmerald,
+            triArcPendingExists,
+            slashVentOnly,
+            slashFlameOnly,
+            slashAutoBoth,
+            triCardDisplayAlt,
+            zoneOrder,
+            standalonePelletsDisplay,
+            standalonePlusDisplay,
+            plusActiveMode,
+            containerPelletsDisplay,
+            containerPlusDisplay,
+            containerHopperDisplay,
+        };
+    }""")
+
+    assert "TRAVAIL" in res["phaseText"] and "Work" not in res["phaseText"]
+    assert res["offIsRose"] is True
+    assert res["onIsEmerald"] is True
+    assert res["triArcPendingExists"] is True
+    assert res["slashVentOnly"] == 1
+    assert res["slashFlameOnly"] == 1
+    assert res["slashAutoBoth"] == 0
+    assert res["triCardDisplayAlt"] == "none"
+    assert res["zoneOrder"] == ["cockpitSelectZone('SX')", "cockpitSelectZone('AMB')", "cockpitSelectZone('DX')"]
+    assert res["standalonePelletsDisplay"] == "none"
+    assert res["standalonePlusDisplay"] == "flex"
+    assert res["plusActiveMode"] == "container"
+    assert res["containerPelletsDisplay"] == "flex"
+    assert res["containerPlusDisplay"] == "none"
+    assert res["containerHopperDisplay"] == "flex"
+    assert page_errors == [], f"Erreurs JS: {page_errors}"
+    context.close()
+
+
+def test_ui_mode_buttons_uniform_icon_only_and_single_settings_accordion(browser_instance):
+    """Vérifie boutons de mode identiques sans libellé, boost programmé horloge agrandie et accordéons Paramètres uniques."""
+    modes = [
+        "triarc",
+        "thermostat",
+        "bento",
+        "faders",
+        "thumb_zone",
+        "cards_accordion",
+        "intentions",
+        "context_hmi",
+        "spatial_flow",
+        "vernier",
+        "ambient_glass",
+    ]
+    context = browser_instance.new_context(viewport={"width": 375, "height": 667})
+    page = context.new_page()
+    page_errors = []
+    page.on("pageerror", lambda err: page_errors.append(str(err)))
+    _attach_app_routes(page)
+    page.goto(f"{APP_ORIGIN}/", wait_until="load")
+    page.wait_for_function("() => window.stoveProvider && window.stoveProvider.servedByContainer === true")
+
+    res = page.evaluate("""async (modesList) => {
+        // 1. Boost programmé (pwf=2) + boutons sans libellé sur les 11 interfaces
+        const perMode = {};
+        const forbiddenLabels = ["Silence", "Auto", "Ventil", "Flamme", "Clima", "Boost", "Actif", "Prog"];
+        for (const m of modesList) {
+            await setActiveCockpitUiMode(m, { persist: false, silent: true });
+            if (m === "ambient_glass" && cockpitAltState.sheet !== "modes") {
+                cockpitOpenSheet("modes");
+            }
+            applyDashboardState({
+                latest: {
+                    status_code: 5,
+                    status_label: "TRAVAIL (Normal)",
+                    temp_ambient: 20.5,
+                    temp_amb_setpoint: 21,
+                    power_actual: 4,
+                    power_level: 4,
+                    fan_front_speed: 3,
+                    fun_auto_set: 0,
+                    fun_pwf_set: 2
+                }
+            }, false);
+            const scope = m === "triarc"
+                ? document.getElementById("triarc-slide-AMB")
+                : document.getElementById("cockpit-alt-root");
+            const modeBtns = Array.from(scope.querySelectorAll("button[onclick^=\\"toggleTriArcOptionBubble(\\"]"));
+            const boostBtn = scope.querySelector("button[onclick=\\"toggleTriArcOptionBubble('boost')\\"]");
+            const boostClockSpan = boostBtn ? boostBtn.querySelector("span[aria-hidden='true']") : null;
+            const texts = modeBtns.map(b => b.textContent.replace(/\\s+/g, " ").trim());
+            const hasForbiddenText = texts.some(t => forbiddenLabels.some(lbl => t.includes(lbl)));
+            perMode[m] = {
+                btnCount: modeBtns.length,
+                hasForbiddenText,
+                boostHasBiggerClock: Boolean(boostClockSpan && boostClockSpan.textContent.includes("⏱️") && boostClockSpan.className.includes("text-[14px]")),
+            };
+            if (m === "ambient_glass") cockpitCloseSheet();
+        }
+
+        // 2. Onglet Paramètres : toutes les bulles réduites à l'ouverture, une seule dépliée à la fois
+        switchTab("tab-installer");
+        const accBodies = () => Array.from(document.querySelectorAll(".settings-acc-body"));
+        const initialOpenCount = accBodies().filter(el => getComputedStyle(el).display !== "none").length;
+
+        toggleSettingsAccordion("zones");
+        const afterFirstOpen = accBodies().filter(el => getComputedStyle(el).display !== "none").map(el => el.id);
+
+        toggleSettingsAccordion("weather");
+        const afterSecondOpen = accBodies().filter(el => getComputedStyle(el).display !== "none").map(el => el.id);
+
+        // Re-entrer dans Paramètres referme les bulles
+        switchTab("tab-control");
+        switchTab("tab-installer");
+        const afterReenterCount = accBodies().filter(el => getComputedStyle(el).display !== "none").length;
+
+        return {
+            perMode,
+            initialOpenCount,
+            afterFirstOpen,
+            afterSecondOpen,
+            afterReenterCount,
+        };
+    }""", modes)
+
+    for m, info in res["perMode"].items():
+        assert info["btnCount"] >= 3, f"Boutons manquants sur {m}: {info}"
+        assert info["hasForbiddenText"] is False, f"Libellé texte encore présent sur {m}: {info}"
+        assert info["boostHasBiggerClock"] is True, f"Horloge boost programmé absente/trop petite sur {m}: {info}"
+
+    assert res["initialOpenCount"] == 0
+    assert res["afterFirstOpen"] == ["acc-body-zones"]
+    assert res["afterSecondOpen"] == ["acc-body-weather"]
+    assert res["afterReenterCount"] == 0
+    assert page_errors == [], f"Erreurs JS: {page_errors}"
+    context.close()

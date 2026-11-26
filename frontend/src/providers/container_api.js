@@ -1,6 +1,14 @@
 // Client HTTP/SSE vers le conteneur compagnon (« Mode + ») en HTTP pur avec X-API-Key.
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 
+function _normalizeContainerBaseUrl(rawUrl) {
+  let u = String(rawUrl || "").trim().replace(/\/+$/, "");
+  if (u && !/^https?:\/\//i.test(u)) {
+    u = `http://${u}`;
+  }
+  return u;
+}
+
 export class ContainerApiClient {
   constructor() {
     this.baseUrl = "";
@@ -9,7 +17,7 @@ export class ContainerApiClient {
   }
 
   configure(baseUrl, apiToken) {
-    this.baseUrl = String(baseUrl || "").trim().replace(/\/+$/, "");
+    this.baseUrl = _normalizeContainerBaseUrl(baseUrl);
     this.apiToken = String(apiToken || "").trim();
   }
 
@@ -22,7 +30,7 @@ export class ContainerApiClient {
   }
 
   async request(path, { method = "GET", headers = {}, body = undefined, timeoutMs = 10000, baseUrlOverride = null, tokenOverride = null } = {}) {
-    const targetBase = baseUrlOverride !== null ? String(baseUrlOverride).replace(/\/+$/, "") : this.baseUrl;
+    const targetBase = baseUrlOverride !== null ? _normalizeContainerBaseUrl(baseUrlOverride) : this.baseUrl;
     const tok = tokenOverride !== null ? String(tokenOverride) : this.apiToken;
     const url = targetBase ? `${targetBase}${path}` : path;
     const reqHeaders = { ...headers };
@@ -37,14 +45,17 @@ export class ContainerApiClient {
 
     const isNative = typeof Capacitor !== "undefined" && typeof Capacitor.isNativePlatform === "function" && Capacitor.isNativePlatform();
     if (isNative && targetBase && !isFormData && !isBinary) {
-      const res = await CapacitorHttp.request({
+      const capOpts = {
         url,
         method,
         headers: reqHeaders,
-        data: body,
         connectTimeout: timeoutMs,
         readTimeout: timeoutMs,
-      });
+      };
+      if (body !== undefined) {
+        capOpts.data = body;
+      }
+      const res = await CapacitorHttp.request(capOpts);
       const ok = res.status >= 200 && res.status < 300;
       const data = typeof res.data === "string" ? JSON.parse(res.data || "{}") : res.data;
       return {
@@ -82,7 +93,7 @@ export class ContainerApiClient {
     try {
       const r = await this.request("/health", {
         method: "GET",
-        timeoutMs: 2500,
+        timeoutMs: 4500,
         baseUrlOverride: baseUrl,
         tokenOverride: apiToken,
       });

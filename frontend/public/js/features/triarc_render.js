@@ -14,7 +14,18 @@ function svgNobisStoveIcon(cls = "w-5 h-5 inline-block", color = "currentColor")
 
 function formatPhaseTwoLines(phaseLabel, meta) {
   if (!phaseLabel) return { line1: "ÉTAT", line2: "Inconnu" };
-  const raw = String(phaseLabel).trim();
+  let raw = String(phaseLabel).trim();
+  if (
+    meta && meta.label && (
+      raw.toLowerCase() === "work" ||
+      (!raw.includes("(") && meta.label.includes("(") && (
+        raw.toLowerCase() === String(meta.short || "").toLowerCase() ||
+        meta.label.toLowerCase().startsWith(raw.toLowerCase())
+      ))
+    )
+  ) {
+    raw = meta.label;
+  }
   const parenMatch = raw.match(/^([^(]+)\s*\(([^)]+)\)$/);
   if (parenMatch) {
     return {
@@ -136,7 +147,9 @@ function getTriArcTelemetryState() {
   const blackout = Number(latestData.blackout_popup ?? 0);
   const isAlarm = (st === 10 || st === 11 || alarm > 0 || blackout > 0);
   const meta = typeof getPhaseMeta === "function" ? getPhaseMeta(isAlarm ? (st === 11 ? 11 : 10) : st) : null;
-  const phaseLabelRaw = latestData.status_label || (meta ? meta.label : (st === 0 ? "Éteint" : `Phase #${st}`));
+  const phaseLabelRaw = (!isAlarm && meta && meta.label)
+    ? meta.label
+    : (latestData.status_label || (meta ? meta.label : (st === 0 ? "Éteint" : `Phase #${st}`)));
   const phaseIcon = meta ? meta.icon : (st === 0 ? "⚫" : "🔥");
   const phaseColor = meta ? meta.hex : (st === 5 ? "#ea580c" : "#94a3b8");
 
@@ -355,16 +368,19 @@ function renderTriArcTopHeader(zone, T) {
     `;
   };
 
-  let pwrBtnCls = "bg-orange-600/90 border-orange-400 text-white shadow-[0_0_14px_rgba(234,88,12,0.5)]";
+  let pwrBtnCls = "bg-rose-600/90 hover:bg-rose-500 border-rose-400 text-white shadow-[0_0_14px_rgba(244,63,94,0.5)]";
+  let pwrBtnTitle = "Éteindre le poêle";
   if (T.isAlarm) {
     pwrBtnCls = "bg-rose-700 border-rose-300 text-white shadow-[0_0_16px_rgba(244,63,94,0.65)] animate-pulse";
+    pwrBtnTitle = "Alarme active • Voir la procédure";
   } else if (T.st === 0) {
-    pwrBtnCls = "bg-rose-950/90 border-rose-500 text-rose-200";
+    pwrBtnCls = "bg-emerald-600/90 hover:bg-emerald-500 border-emerald-400 text-white shadow-[0_0_14px_rgba(16,185,129,0.5)]";
+    pwrBtnTitle = "Allumer le poêle";
   }
 
   const centerPowerBtn = `
     <button type="button" onclick="handleDynamicPowerAction()"
-      title="Bouton Marche / Arrêt Poêle"
+      title="${pwrBtnTitle}"
       class="h-14 w-14 aspect-square rounded-2xl border-2 flex items-center justify-center shrink-0 transition shadow-lg cursor-pointer ${pwrBtnCls}">
       <svg viewBox="0 0 24 24" class="w-6 h-6 drop-shadow" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 2v10" />
@@ -759,108 +775,7 @@ function getTriArcZoneAutoIdx(zone, T) {
 }
 
 function renderTriArcBottomModes(T, zone = triArcZone) {
-  const caps = _getTriArcCaps();
-  const ducts = Array.isArray(caps.ducts) ? caps.ducts : [];
-  const silTimerActive = Boolean(T.isContainerSil) && T.isSilActive && T.remSec > 0;
-  const silBtnActive = T.isContainerSil ? silTimerActive : Boolean(T.isSilActive);
-  const silTimerTxt = silTimerActive
-    ? `${Math.floor(T.remSec / 3600)}h${String(Math.floor((T.remSec % 3600) / 60)).padStart(2, "0")}`
-    : "";
-  const silBadge = silTimerActive
-    ? `<span id="triarc-silence-btn-timer" class="text-[10px] font-black mt-0.5 tabular-nums text-purple-200">${silTimerTxt}</span>`
-    : (silBtnActive ? `<span class="text-[9.5px] font-black uppercase text-purple-200 mt-0.5">Actif</span>` : "");
-
-  const hasAnyAutoFan = _triArcZoneSupportsFanAuto("AMB", caps)
-    || ducts.some(d => Number(d.speed_max ?? 8) >= 8);
-  const showAutoBtn = caps.has_auto !== false || hasAnyAutoFan;
-
-  const zoneAutoIdx = getTriArcZoneAutoIdx(zone, T);
-  let autoBtnCls = "bg-slate-900/90 border-slate-700 text-slate-400 hover:border-cyan-400";
-  let autoBadge = "";
-  if (zoneAutoIdx === 1) {
-    autoBtnCls = "bg-cyan-950/80 border-cyan-400 text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.35)]";
-    autoBadge = `<span class="text-[9.5px] font-black uppercase text-cyan-300 mt-0.5">Ventil</span>`;
-  } else if (zoneAutoIdx === 3) {
-    autoBtnCls = "bg-amber-950/80 border-amber-400 text-amber-200 shadow-[0_0_12px_rgba(245,158,11,0.35)]";
-    autoBadge = `<span class="text-[9.5px] font-black uppercase text-amber-300 mt-0.5">${hasAnyAutoFan ? "Flamme" : "Auto"}</span>`;
-  } else if (zoneAutoIdx === 2) {
-    autoBtnCls = "bg-orange-950/80 border-orange-400 text-orange-200 shadow-[0_0_12px_rgba(249,115,22,0.35)]";
-    autoBadge = `<span class="text-[9.5px] font-black uppercase text-orange-300 mt-0.5">Auto</span>`;
-  }
-
-  const boostButtonHtml = (() => {
-    if (caps.has_boost === false) return "";
-    const pwrMax = Math.max(1, Number(caps.power_max ?? 7));
-    const isBoostRealP8 = T.st === 5 && Number(T.realPwr) > pwrMax;
-    let boostBtnCls = "bg-slate-900/90 border-slate-700 text-slate-300 hover:border-rose-400";
-    let boostIcon = `<span class="text-2xl leading-none">🚀</span>`;
-    let boostBadge = "";
-    if (T.pwfVal === 1 || (T.pwfVal === 0 && isBoostRealP8)) {
-      boostBtnCls = "bg-rose-950/80 border-rose-400 text-rose-200 shadow-[0_0_14px_rgba(244,63,94,0.45)]";
-      boostIcon = `<span class="text-xl leading-none drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]">🚀</span>`;
-      boostBadge = `<span class="text-[9.5px] font-black uppercase text-rose-300 mt-0.5">Boost</span>`;
-    } else if (T.pwfVal === 2) {
-      if (isBoostRealP8) {
-        boostBtnCls = "bg-rose-950/80 border-rose-400 text-rose-200 shadow-[0_0_14px_rgba(244,63,94,0.45)]";
-        boostBadge = `<span class="text-[9.5px] font-black uppercase text-rose-300 mt-0.5">Actif</span>`;
-      } else {
-        boostBtnCls = "bg-amber-950/80 border-amber-400 text-amber-200 shadow-[0_0_14px_rgba(245,158,11,0.45)]";
-        boostBadge = `<span class="text-[9.5px] font-black uppercase text-amber-300 mt-0.5">Prog</span>`;
-      }
-      boostIcon = `
-          <div class="relative inline-flex items-center justify-center">
-            <span class="text-xl leading-none drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]">🚀</span>
-            <span class="absolute -bottom-1 -right-1.5 text-[10px] leading-none">⏱️</span>
-          </div>
-        `;
-    }
-    return `
-        <button type="button" onclick="toggleTriArcOptionBubble('boost')"
-          title="Mode Boost / POWERFUL (0=OFF, 1=Actif, 2=Programmé)"
-          class="flex-1 h-14 sm:h-15 min-h-[54px] rounded-2xl border-2 flex flex-col items-center justify-center transition cursor-pointer ${boostBtnCls}">
-          ${boostIcon}
-          ${boostBadge}
-        </button>
-      `;
-  })();
-  const ecoButtonHtml = T.canWriteEco ? `
-      <button type="button" onclick="toggleTriArcOptionBubble('eco')"
-        title="Comfort Clima (ON/OFF, temporisation et Delta T°)"
-        class="flex-1 h-14 sm:h-15 min-h-[54px] rounded-2xl border-2 flex flex-col items-center justify-center transition cursor-pointer ${T.isEco ? 'bg-emerald-950/80 border-emerald-400 text-emerald-200 shadow-[0_0_12px_rgba(16,185,129,0.35)]' : 'bg-slate-900/90 border-slate-700 text-slate-400 hover:border-emerald-400'}">
-        <span class="text-2xl leading-none">💤</span>
-        ${T.isEco ? '<span class="text-[9.5px] font-black uppercase text-emerald-300 mt-0.5">Actif</span>' : ""}
-      </button>
-  ` : "";
-
-  return `
-    <div class="flex items-stretch gap-2 pt-1 pb-1">
-      <!-- 1. Silence (🤫 — temporisé avec retour auto via conteneur Mode +, direct sans temporisation en Standalone) -->
-      <button type="button" onclick="toggleTriArcOptionBubble('silence')"
-        title="${T.isContainerSil ? 'Mode Silence (Timer Conteneur)' : 'Mode Silence (Sans temporisation)'}"
-        class="flex-1 h-14 sm:h-15 min-h-[54px] rounded-2xl border-2 flex flex-col items-center justify-center transition cursor-pointer ${silBtnActive ? 'bg-purple-950/75 border-purple-400 text-white shadow-[0_0_12px_rgba(168,85,247,0.35)]' : 'bg-slate-900/90 border-slate-700 text-slate-400 hover:border-purple-400'}">
-        <span class="${silBtnActive ? 'text-xl' : 'text-2xl'} leading-none">🤫</span>
-        ${silBadge}
-      </button>
-
-      <!-- 2. Auto -->
-      ${showAutoBtn ? `
-      <button type="button" onclick="toggleTriArcOptionBubble('auto')"
-        title="Mode Auto (OFF / Flamme / Ventilation / Auto complet)"
-        class="flex-1 h-14 sm:h-15 min-h-[54px] rounded-2xl border-2 flex flex-col items-center justify-center transition cursor-pointer ${autoBtnCls}">
-        <span class="text-lg leading-none flex items-center justify-center gap-0.5">
-          <span>🔥</span><span class="text-base font-bold">+</span>${svgPropellerFanIcon("w-4 h-4", "currentColor")}
-        </span>
-        ${autoBadge}
-      </button>
-      ` : ""}
-
-      <!-- Comfort Clima, uniquement si le registre SET est exposé -->
-      ${ecoButtonHtml}
-
-      <!-- 3. Boost -->
-      ${boostButtonHtml}
-    </div>
-  `;
+  return `<div class="pt-1 pb-1">${renderCockpitModeBar(T, zone)}</div>`;
 }
 
 function renderTriArcFloatingOptionBubble(T) {
@@ -1047,6 +962,7 @@ function renderTriArcFloatingOptionBubble(T) {
     const caps = _getTriArcCaps();
     if (!T.isContainerSil) {
       const silDirectActive = Boolean(T.isSilActive);
+      const hasStandaloneSnap = Boolean(typeof loadStandaloneSilenceSnapshot === "function" && loadStandaloneSilenceSnapshot());
       const tMin = Math.round(Number(caps.temp_min ?? 7));
       return `
         <div class="bg-slate-900 border-2 border-purple-400 rounded-3xl p-3.5 space-y-2.5 shadow-[0_10px_40px_rgba(0,0,0,0.9)]">
@@ -1055,9 +971,16 @@ function renderTriArcFloatingOptionBubble(T) {
             <button type="button" onclick="closeTriArcOptionBubble()" class="w-6 h-6 rounded-full bg-slate-800 text-slate-300 font-bold cursor-pointer">✕</button>
           </div>
           ${silDirectActive ? `
-            <div class="py-2.5 px-3 rounded-2xl bg-purple-950/70 border border-purple-400 text-purple-200 text-xs font-bold text-center space-y-1">
+            <div class="py-2.5 px-3 rounded-2xl bg-purple-950/70 border border-purple-400 text-purple-200 text-xs font-bold text-center space-y-2">
               <div>🤫 Mode Silence actif sur le poêle</div>
-              <div class="text-[10.5px] font-normal text-purple-200/80">Remontez simplement la consigne de température ou changez de mode pour en sortir.</div>
+              ${hasStandaloneSnap ? `
+                <button type="button" onclick="deactivateStandaloneSilence()"
+                  class="w-full py-2 px-3 rounded-xl border border-purple-300 bg-purple-700/80 hover:bg-purple-600 text-white text-xs font-bold cursor-pointer transition">
+                  Désactiver Silence &amp; Restaurer
+                </button>
+              ` : `
+                <div class="text-[10.5px] font-normal text-purple-200/80">Remontez simplement la consigne de température ou changez de mode pour en sortir.</div>
+              `}
             </div>
           ` : `
             <button type="button" onclick="activateStandaloneSilence()"
@@ -1067,7 +990,7 @@ function renderTriArcFloatingOptionBubble(T) {
           `}
           <div class="space-y-1.5 text-[11px] leading-tight text-slate-300 bg-slate-950/70 border border-slate-800 rounded-xl p-2.5">
             <p class="font-semibold text-purple-300">Fonctionnement en mode Standalone</p>
-            <p>Passe les consignes en <strong>hors gel (${tMin}°C)</strong>${T.st !== 0 ? " et règle le poêle en <strong>Auto</strong> (Boost et Chrono coupés) pour un ralenti silencieux immédiat" : ""}.</p>
+            <p>Passe les consignes en <strong>hors gel (${tMin}°C)</strong>${T.st !== 0 ? ", coupe <strong>Boost / Chrono" + (T.canWriteEco ? " / Confort Clima" : "") + "</strong>, active <strong>Auto flamme seulement</strong> et coupe les <strong>ventilations (0)</strong>" : ""}.</p>
           </div>
           ${!T.canWriteEco ? `
           <div class="text-[11px] leading-tight text-amber-200 bg-amber-950/40 border border-amber-500/40 rounded-xl p-2.5">
@@ -1105,9 +1028,9 @@ function renderTriArcFloatingOptionBubble(T) {
         <div class="space-y-1.5 text-[11px] leading-tight text-slate-300 bg-slate-950/70 border border-slate-800 rounded-xl p-2.5">
           <p class="font-semibold text-purple-300">Fonctionnement intelligent du mode Silence</p>
           <p>• <strong>Si poêle éteint :</strong> toutes les consignes passent immédiatement en <strong>hors gel (7°C)</strong>.</p>
-          <p>• <strong>Si poêle allumé :</strong> ${T.canWriteEco ? "désactivation du <strong>Boost</strong>, du <strong>Mode Éco</strong> et de la <strong>programmation (Chrono)</strong>" : "désactivation du <strong>Boost</strong> et de la <strong>programmation (Chrono)</strong>"}, activation du <strong>Mode Auto total</strong> et passage des consignes en <strong>hors gel (7°C)</strong>. Le poêle bascule ainsi automatiquement en puissance minimale <strong>P0</strong> et ventilation <strong>Ventil 0</strong> (convection 100% silencieuse) <strong>sans s'éteindre</strong>.</p>
+          <p>• <strong>Si poêle allumé :</strong> ${T.canWriteEco ? "désactivation du <strong>Boost</strong>, du <strong>Mode Confort/Éco</strong> et de la <strong>programmation (Chrono)</strong>" : "désactivation du <strong>Boost</strong> et de la <strong>programmation (Chrono)</strong>"}, passage en <strong>Auto flamme seulement</strong>, coupure des <strong>ventilations (0)</strong> et consignes en <strong>hors gel (7°C)</strong>.</p>
           ${!T.canWriteEco ? `<p class="text-amber-300/90">ℹ️ Si <strong>Comfort Clima</strong> est activé sur la télécommande physique, la consigne à 7°C déclenchera une veille thermique (<strong>ECO STOP</strong>) au lieu du ralenti continu P0, puis rallumera le poêle à la restauration.</p>` : ""}
-          <p class="text-slate-400">À la fin du décompte programmé ou lors d'une modification manuelle, les consignes et réglages d'origine sont automatiquement restaurés.</p>
+          <p class="text-slate-400">À la fin du décompte (ou lors d'une activation Éco / Boost / surcharge manuelle), l'état précédent (ou le programme Chrono en cours s'il était actif) est d'abord restauré avant toute nouvelle consigne.</p>
         </div>
       </div>
     `;
@@ -1134,8 +1057,16 @@ function renderTriArcCockpit() {
     syncCockpitUiControlClasses(uiMode);
   }
 
+  const pendingSlot = document.getElementById("triarc-pending-bar-slot");
+  const dotsWrap = document.getElementById("triarc-screen-dots");
+
   if (uiMode !== "triarc" && altRoot) {
-    if (triarcCard) triarcCard.classList.add("hidden");
+    if (triarcCard) {
+      triarcCard.classList.add("hidden");
+      triarcCard.style.display = "none";
+    }
+    if (dotsWrap) dotsWrap.classList.add("hidden");
+    if (pendingSlot) pendingSlot.innerHTML = "";
     ["SX", "AMB", "DX"].forEach(z => {
       const slideEl = document.getElementById(`triarc-slide-${z}`);
       if (slideEl) slideEl.innerHTML = "";
@@ -1143,7 +1074,11 @@ function renderTriArcCockpit() {
     altRoot.classList.remove("hidden");
     altRoot.innerHTML = typeof renderAlternativeCockpit === "function" ? renderAlternativeCockpit(uiMode, T, caps) : "";
   } else {
-    if (triarcCard) triarcCard.classList.remove("hidden");
+    if (triarcCard) {
+      triarcCard.classList.remove("hidden");
+      triarcCard.style.display = "";
+    }
+    if (dotsWrap) dotsWrap.classList.toggle("hidden", !hasSX && !hasDX);
     if (altRoot) {
       altRoot.classList.add("hidden");
       altRoot.innerHTML = "";
@@ -1174,6 +1109,9 @@ function renderTriArcCockpit() {
         `;
       }
     });
+    if (pendingSlot && typeof renderCockpitPendingBar === "function") {
+      pendingSlot.innerHTML = renderCockpitPendingBar();
+    }
   }
 
   const overlay = document.getElementById("triarc-floating-overlay");

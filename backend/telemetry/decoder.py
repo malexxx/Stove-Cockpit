@@ -245,7 +245,9 @@ def _apply_dynamic_status_and_alarm(
     if dyn_status_raw is not None or dyn_status_desc:
         raw_st = int(round(float(dyn_status_raw))) if dyn_status_raw is not None else state
         state = infer_normalized_status_code(dyn_status_desc, raw_st)
-        if dyn_status_desc:
+        if state in STOVE_STATES:
+            status_label = STOVE_STATES[state]
+        elif dyn_status_desc:
             status_label = dyn_status_desc
     dyn_alarm_raw = dyn_fn("alarms_get")
     dyn_alarm_desc = dyn_desc_fn("alarms_get")
@@ -408,24 +410,30 @@ def decode_hardware_buffer(
     dr_spd = int(round(float(_dyn("duct_right_speed", raw_buf.get(33134, r_val.get("duct_right_speed", 0))))))
     chrono_fields = extract_chrono_fields(r_val, raw_buf)
 
+    decoded_overrides: dict[str, float] = {
+        "fun_auto_set": float(fun_auto_val),
+        "standby_set": float(standby_en),
+        "power_level": float(p_cmd),
+        "temp_amb_setpoint": float(temp_amb_sp),
+        "duct_left_setpoint": dl_sp,
+        "duct_right_setpoint": dr_sp,
+        "fan_front_speed": float(fan_front_spd),
+        "duct_left_speed": float(dl_spd),
+        "duct_right_speed": float(dr_spd),
+        "fun_pwf_set": float(pwf_val),
+        "chrono_week_enable_set": float(chrono_fields["chrono_week_enable"]),
+    }
+    if comfortclima_time is not None:
+        decoded_overrides["comfortclima_time_set"] = float(comfortclima_time)
+    if comfortclima_restart is not None:
+        decoded_overrides["comfortclima_restart_set"] = float(comfortclima_restart)
+
     _persist_catalog_from_buffer(
         comm_mode,
         regs,
         raw_buf,
         now_str,
-        decoded_overrides={
-            "fun_auto_set": float(fun_auto_val),
-            "standby_set": float(standby_en),
-            "power_level": float(p_cmd),
-            "temp_amb_setpoint": float(temp_amb_sp),
-            "duct_left_setpoint": dl_sp,
-            "duct_right_setpoint": dr_sp,
-            "fan_front_speed": float(fan_front_spd),
-            "duct_left_speed": float(dl_spd),
-            "duct_right_speed": float(dr_spd),
-            "fun_pwf_set": float(pwf_val),
-            "chrono_week_enable_set": float(chrono_fields["chrono_week_enable"]),
-        },
+        decoded_overrides=decoded_overrides,
     )
 
     return {

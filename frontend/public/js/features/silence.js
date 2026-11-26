@@ -151,7 +151,7 @@ async function confirmActivateSilence() {
     const isStoveOn = data.silence_mode && typeof data.silence_mode.is_stove_on === "boolean" ? data.silence_mode.is_stove_on : (Number(latestData.status_code ?? 0) !== 0);
     if (isStoveOn) {
       const canWriteEco = Boolean(typeof getActiveCapabilities === "function" && getActiveCapabilities()?.can_write_eco);
-      showToast(`Mode Silence ! intelligent actif (${hours}H) : ${canWriteEco ? "Boost/Éco/Chrono coupés" : "Boost/Chrono coupés"}, Auto total actif, consignes en hors gel 7°C.`);
+      showToast(`Mode Silence ! intelligent actif (${hours}H) : ${canWriteEco ? "Boost/Éco/Chrono coupés" : "Boost/Chrono coupés"}, Auto flamme seulement, ventilations coupées, consignes en hors gel 7°C.`);
     } else {
       showToast(`Mode Silence ! intelligent actif (${hours}H) : poêle éteint, consignes passées en hors gel (7°C).`);
     }

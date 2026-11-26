@@ -357,7 +357,7 @@ export function decodeBufferToTelemetry(rawBuf, registerMap, settings = {}, weat
   const dynStDesc = dynDesc("status_get");
   if (dynStRaw !== null || dynStDesc) {
     statusCode = inferNormalizedStatusCode(dynStDesc, dynStRaw !== null ? Math.round(Number(dynStRaw)) : statusCode);
-    if (dynStDesc) statusLabel = dynStDesc;
+    statusLabel = schema.stove_states?.[String(statusCode)] || dynStDesc || `Code ${statusCode}`;
   }
 
   let alarmCode = Number(dyn("alarms_get", rawBuf[34] ?? rawBuf["34"] ?? 0));

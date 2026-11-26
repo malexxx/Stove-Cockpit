@@ -16,7 +16,7 @@ function renderCockpitView_thermostat(T, caps) {
   const track = triArcPath(110, 96, 74, 135, 405, false);
   const fill = triArcPath(110, 96, 74, 135, angSp, false);
   const isFanAuto = (zone === "AMB") && (T.autoIdx === 1 || T.autoIdx === 2 || Z.fanSp === 8);
-  const isAutoTotal = T.autoIdx === 2;
+  const isPwrAuto = Number(T.autoPwr) === 1;
 
   return `
     <div class="space-y-2.5">
@@ -59,8 +59,8 @@ function renderCockpitView_thermostat(T, caps) {
 
       ${(Z.showFan || Z.showPwr) ? `
       <div class="rounded-2xl bg-slate-900/90 border border-slate-800 p-3 space-y-2.5">
-        ${Z.showFan ? renderCockpitSegmentedFan(zone, Z.fanSp, Z.fanReal, caps, isFanAuto) : ""}
-        ${Z.showPwr ? renderCockpitSegmentedPower(T.pwrSp, T.realPwr, caps, isAutoTotal) : ""}
+        ${Z.showFan ? renderCockpitSegmentedFan(zone, Z.fanSp, Z.fanReal, caps, isFanAuto, isPwrAuto) : ""}
+        ${Z.showPwr ? renderCockpitSegmentedPower(T.pwrSp, T.realPwr, caps, isPwrAuto, isFanAuto) : ""}
       </div>
       ` : ""}
 
@@ -83,10 +83,12 @@ function renderCockpitView_bento(T, caps) {
   const hasSX = ducts.some(d => d.id === "SX");
   const hasDX = ducts.some(d => d.id === "DX");
   const isFanAuto = (zone === "AMB") && (T.autoIdx === 1 || T.autoIdx === 2 || Z.fanSp === 8);
-  const isAutoTotal = T.autoIdx === 2;
+  const isPwrAuto = Number(T.autoPwr) === 1;
 
   return `
     <div class="space-y-2.5">
+      ${renderCockpitZoneTabs(zone, T, caps)}
+
       <div class="grid grid-cols-3 gap-2">
         <!-- Tuile Héro 2x1 Température -->
         <div class="col-span-2 rounded-3xl bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 p-3.5 flex flex-col justify-between gap-2 shadow-lg">
@@ -115,9 +117,9 @@ function renderCockpitView_bento(T, caps) {
           <button type="button" onclick="handleDynamicPowerAction()"
             class="flex-1 rounded-3xl border-2 p-2.5 flex flex-col items-center justify-center gap-1 transition cursor-pointer ${T.isAlarm
               ? "bg-rose-900/90 border-rose-400 text-white animate-pulse"
-              : (T.st === 0 ? "bg-rose-950/60 border-rose-500/70 text-rose-200" : "bg-orange-600/25 border-orange-400 text-orange-200")}">
+              : (T.st === 0 ? "bg-emerald-600/85 hover:bg-emerald-500/90 border-emerald-400 text-white" : "bg-rose-600/85 hover:bg-rose-500/90 border-rose-400 text-white")}">
             <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></svg>
-            <span class="text-[11px] font-extrabold">${T.isAlarm ? "Alarme" : (T.st === 0 ? "Allumer" : "Marche")}</span>
+            <span class="text-[11px] font-extrabold">${T.isAlarm ? "Alarme" : (T.st === 0 ? "Allumer" : "Éteindre")}</span>
           </button>
 
           <div class="rounded-3xl bg-slate-900/90 border border-slate-800 p-2.5 flex flex-col justify-between gap-1">
@@ -125,8 +127,11 @@ function renderCockpitView_bento(T, caps) {
               <span>🔥 Puiss</span>
               <span class="font-mono text-slate-400">R:P${Math.round(T.realPwr)}</span>
             </div>
-            ${isAutoTotal ? `
-              <div class="text-xs font-extrabold text-orange-200 text-center py-0.5">Auto (P${Math.round(T.realPwr)})</div>
+            ${isPwrAuto ? `
+              <div class="flex items-center justify-between gap-1">
+                <span class="text-xs font-extrabold text-orange-200">Auto P${Math.round(T.realPwr)}</span>
+                <button type="button" onclick="setTriArcAutoOption(${isFanAuto ? 1 : 0})" class="px-1.5 py-0.5 rounded-lg bg-slate-800 text-[10px] font-bold text-orange-200 cursor-pointer">Manuel</button>
+              </div>
             ` : `
               <div class="flex items-center justify-between gap-1">
                 <button type="button" onclick="cockpitStepPower(-1)" class="w-7 h-7 rounded-xl bg-slate-800 text-white font-black text-sm cursor-pointer">−</button>
@@ -138,53 +143,27 @@ function renderCockpitView_bento(T, caps) {
         </div>
       </div>
 
-      <!-- Ligne intermédiaire : Ventilation + Canalisations SX / DX -->
-      <div class="grid ${hasSX || hasDX ? "grid-cols-2" : "grid-cols-1"} gap-2">
-        ${Z.showFan ? `
-        <div class="rounded-3xl bg-slate-900/90 border border-slate-800 p-3 flex flex-col justify-between gap-2">
-          <div class="flex items-center justify-between text-xs">
-            <span class="font-bold text-sky-300 flex items-center gap-1">${svgPropellerFanIcon("w-3.5 h-3.5", "#38bdf8")} Ventil</span>
-            <span class="font-mono text-[11px] text-slate-400">Réel ${fmtTriArcFan(Z.fanReal)}</span>
+      <!-- Ligne intermédiaire : Ventilation -->
+      ${Z.showFan ? `
+      <div class="rounded-3xl bg-slate-900/90 border border-slate-800 p-3 flex items-center justify-between gap-2">
+        <div class="text-xs">
+          <div class="font-bold text-sky-300 flex items-center gap-1">${svgPropellerFanIcon("w-3.5 h-3.5", "#38bdf8")} Ventilation · ${escapeHtml(Z.label)}</div>
+          <div class="font-mono text-[11px] text-slate-400">Réel ${fmtTriArcFan(Z.fanReal)}</div>
+        </div>
+        ${isFanAuto ? `
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-black text-cyan-300">AUTO</span>
+            <button type="button" onclick="setTriArcAutoOption(${isPwrAuto ? 3 : 0})" class="px-2.5 py-1 rounded-lg bg-slate-800 text-[10px] font-bold text-cyan-200 cursor-pointer">Manuel</button>
           </div>
-          ${isFanAuto ? `
-            <div class="flex items-center justify-between">
-              <span class="text-sm font-black text-cyan-300">AUTO</span>
-              <button type="button" onclick="setTriArcAutoOption(0)" class="px-2 py-1 rounded-lg bg-slate-800 text-[10px] font-bold text-cyan-200 cursor-pointer">Manuel</button>
-            </div>
-          ` : `
-            <div class="flex items-center justify-between gap-1">
-              <button type="button" onclick="cockpitStepFan('${zone}', -1)" class="w-9 h-8 rounded-xl bg-slate-800 text-white font-black cursor-pointer">−</button>
-              <span class="text-base font-black text-white font-mono">${fmtTriArcFan(Z.fanSp)}</span>
-              <button type="button" onclick="cockpitStepFan('${zone}', 1)" class="w-9 h-8 rounded-xl bg-sky-600 text-white font-black cursor-pointer">+</button>
-            </div>
-          `}
-        </div>
-        ` : ""}
-
-        ${(hasSX || hasDX) ? `
-        <div class="rounded-3xl bg-slate-900/90 border border-slate-800 p-2.5 space-y-1.5">
-          <button type="button" onclick="cockpitSelectZone('AMB')"
-            class="w-full flex items-center justify-between px-2 py-1 rounded-xl text-[11px] cursor-pointer ${zone === "AMB" ? "bg-orange-950/60 border border-orange-500/60 text-orange-200" : "bg-slate-950 text-slate-300"}">
-            <span class="font-bold truncate">Salon</span>
-            <span class="font-mono font-bold">${T.realAmb}°→${fmtTriArcTempSp(T.spAmb)}</span>
-          </button>
-          ${hasSX ? `
-          <button type="button" onclick="cockpitSelectZone('SX')"
-            class="w-full flex items-center justify-between px-2 py-1 rounded-xl text-[11px] cursor-pointer ${zone === "SX" ? "bg-cyan-950/60 border border-cyan-400 text-cyan-200" : "bg-slate-950 text-slate-300"}">
-            <span class="font-bold truncate">${escapeHtml(getDuctName("SX"))}</span>
-            <span class="font-mono font-bold">${T.realSx}°→${fmtTriArcTempSp(T.spSx)} · V${fmtTriArcFan(T.fanSx)}</span>
-          </button>
-          ` : ""}
-          ${hasDX ? `
-          <button type="button" onclick="cockpitSelectZone('DX')"
-            class="w-full flex items-center justify-between px-2 py-1 rounded-xl text-[11px] cursor-pointer ${zone === "DX" ? "bg-sky-950/60 border border-sky-400 text-sky-200" : "bg-slate-950 text-slate-300"}">
-            <span class="font-bold truncate">${escapeHtml(getDuctName("DX"))}</span>
-            <span class="font-mono font-bold">${T.realDx}°→${fmtTriArcTempSp(T.spDx)} · V${fmtTriArcFan(T.fanDx)}</span>
-          </button>
-          ` : ""}
-        </div>
-        ` : ""}
+        ` : `
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="cockpitStepFan('${zone}', -1)" class="w-9 h-8 rounded-xl bg-slate-800 text-white font-black cursor-pointer">−</button>
+            <span class="text-base font-black text-white font-mono min-w-[36px] text-center">${fmtTriArcFan(Z.fanSp)}</span>
+            <button type="button" onclick="cockpitStepFan('${zone}', 1)" class="w-9 h-8 rounded-xl bg-sky-600 text-white font-black cursor-pointer">+</button>
+          </div>
+        `}
       </div>
+      ` : ""}
 
       ${renderCockpitModeBar(T, zone, true)}
       ${renderTriArcDailyChronoFrise(zone)}
@@ -204,7 +183,7 @@ function renderCockpitView_faders(T, caps) {
   const pMax = Math.max(pMin, Number(caps.power_max ?? 7));
 
   const isFanAuto = (zone === "AMB") && (T.autoIdx === 1 || T.autoIdx === 2 || Z.fanSp === 8);
-  const isPwrAuto = T.autoIdx === 2;
+  const isPwrAuto = Number(T.autoPwr) === 1;
 
   const pctTempSp = Math.max(0, Math.min(100, ((Number(Z.spT) - tMin) / Math.max(1, tMax - tMin)) * 100));
   const pctTempReal = Math.max(0, Math.min(100, ((Number(Z.realT) - tMin) / Math.max(1, tMax - tMin)) * 100));
@@ -316,9 +295,9 @@ function renderCockpitView_thumb_zone(T, caps) {
           <div class="text-sm font-extrabold text-orange-300 mt-1">Consigne ${fmtTriArcTempSp(Z.spT)}</div>
         </div>
         <div class="flex flex-wrap items-center justify-center gap-2 text-[11px] font-mono text-slate-300">
+          ${hasSX ? `<span class="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-cyan-300">${escapeHtml(getDuctName("SX"))} ${T.realSx}°</span>` : ""}
           <span class="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">🔥 P${Math.round(T.realPwr)}</span>
           ${Z.showFan ? `<span class="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">🌀 ${fmtTriArcFan(Z.fanReal)}</span>` : ""}
-          ${hasSX ? `<span class="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-cyan-300">${escapeHtml(getDuctName("SX"))} ${T.realSx}°</span>` : ""}
           ${hasDX ? `<span class="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-sky-300">${escapeHtml(getDuctName("DX"))} ${T.realDx}°</span>` : ""}
         </div>
         ${renderTriArcDailyChronoFrise(zone)}
@@ -363,28 +342,28 @@ function renderCockpitView_cards_accordion(T, caps) {
   const hasDX = ducts.some(d => d.id === "DX");
   const ambOpen = Boolean(cockpitAltState.expandedCards.AMB);
   const isAmbFanAuto = T.autoIdx === 1 || T.autoIdx === 2 || T.fanAmb === 8;
-  const isAutoTotal = T.autoIdx === 2;
+  const isPwrAuto = Number(T.autoPwr) === 1;
 
   const renderDuctCard = (ductId, accentBorder, accentText, realT, spT, fanSp, fanReal) => {
     const isOpen = Boolean(cockpitAltState.expandedCards[ductId]);
     const name = escapeHtml(getDuctName(ductId));
     return `
       <div class="rounded-3xl bg-slate-900/90 border ${isOpen ? accentBorder : "border-slate-800"} overflow-hidden transition">
-        <div class="p-3.5 flex items-center justify-between gap-2">
-          <button type="button" onclick="cockpitToggleAccordion('${ductId}')" class="flex-1 min-w-0 text-left flex items-center gap-2.5 cursor-pointer">
+        <div class="p-3 flex items-center justify-between gap-1.5">
+          <button type="button" onclick="cockpitToggleAccordion('${ductId}')" class="flex-1 min-w-0 text-left flex flex-col gap-0.5 cursor-pointer">
             <span class="text-xs font-extrabold ${accentText} truncate">${name}</span>
             <span class="text-xs font-mono font-black text-white tabular-nums">${realT}° → ${fmtTriArcTempSp(spT)}</span>
-            <span class="text-[11px] font-mono text-slate-400">🌀 ${fmtTriArcFan(fanSp)}</span>
+            <span class="text-[10.5px] font-mono text-slate-400">🌀 ${fmtTriArcFan(fanSp)}</span>
           </button>
-          <div class="flex items-center gap-1.5 shrink-0">
+          <div class="flex items-center gap-1 shrink-0">
             <button type="button" onclick="cockpitStepTemp('${ductId}', -1)" class="w-8 h-8 rounded-xl bg-slate-800 text-white font-black cursor-pointer">−</button>
             <button type="button" onclick="cockpitStepTemp('${ductId}', 1)" class="w-8 h-8 rounded-xl bg-slate-800 text-white font-black cursor-pointer">+</button>
-            <button type="button" onclick="cockpitToggleAccordion('${ductId}')" class="w-8 h-8 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 text-xs cursor-pointer">${isOpen ? "▲" : "▼"}</button>
+            <button type="button" onclick="cockpitToggleAccordion('${ductId}')" class="w-7 h-8 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 text-[10px] cursor-pointer">${isOpen ? "▲" : "▼"}</button>
           </div>
         </div>
         ${isOpen ? `
-          <div class="px-3.5 pb-3.5 pt-2 border-t border-slate-800/80 space-y-2.5">
-            ${renderCockpitSegmentedFan(ductId, fanSp, fanReal, caps, false)}
+          <div class="px-3 pb-3 pt-2 border-t border-slate-800/80 space-y-2.5">
+            ${renderCockpitSegmentedFan(ductId, fanSp, fanReal, caps, false, isPwrAuto)}
             ${renderTriArcDailyChronoFrise(ductId)}
           </div>
         ` : ""}
@@ -423,14 +402,18 @@ function renderCockpitView_cards_accordion(T, caps) {
 
         ${ambOpen ? `
           <div class="space-y-2.5 pt-1 border-t border-slate-800/80">
-            ${caps.has_fan_front !== false ? renderCockpitSegmentedFan("AMB", T.fanAmb, T.realFanAmb, caps, isAmbFanAuto) : ""}
-            ${renderCockpitSegmentedPower(T.pwrSp, T.realPwr, caps, isAutoTotal)}
+            ${caps.has_fan_front !== false ? renderCockpitSegmentedFan("AMB", T.fanAmb, T.realFanAmb, caps, isAmbFanAuto, isPwrAuto) : ""}
+            ${renderCockpitSegmentedPower(T.pwrSp, T.realPwr, caps, isPwrAuto, isAmbFanAuto)}
           </div>
         ` : ""}
       </div>
 
-      ${hasSX ? renderDuctCard("SX", "border-cyan-400/70", "text-cyan-300", T.realSx, T.spSx, T.fanSx, T.realFanSx) : ""}
-      ${hasDX ? renderDuctCard("DX", "border-sky-400/70", "text-sky-300", T.realDx, T.spDx, T.fanDx, T.realFanDx) : ""}
+      ${(hasSX || hasDX) ? `
+      <div class="grid ${hasSX && hasDX ? "grid-cols-2" : "grid-cols-1"} gap-2 items-start">
+        ${hasSX ? renderDuctCard("SX", "border-cyan-400/70", "text-cyan-300", T.realSx, T.spSx, T.fanSx, T.realFanSx) : ""}
+        ${hasDX ? renderDuctCard("DX", "border-sky-400/70", "text-sky-300", T.realDx, T.spDx, T.fanDx, T.realFanDx) : ""}
+      </div>
+      ` : ""}
 
       ${renderCockpitModeBar(T, "AMB", true)}
       ${renderTriArcDailyChronoFrise("AMB")}

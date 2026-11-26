@@ -7,26 +7,35 @@ let openSettingsAccId = null;
 let currentStorageStatus = null;
 let currentUpdateStatus = null;
 
+function collapseAllSettingsAccordions() {
+  document.querySelectorAll(".settings-acc-body").forEach((el) => {
+    el.classList.add("hidden");
+    el.style.display = "none";
+  });
+  document.querySelectorAll(".settings-acc-arrow").forEach((el) => el.classList.remove("rotate-180"));
+  document.querySelectorAll(".settings-acc-item > button").forEach((btn) => {
+    btn.setAttribute("aria-expanded", "false");
+  });
+  openSettingsAccId = null;
+}
+
 function toggleSettingsAccordion(accId, forceOpen = false) {
   const targetBody = document.getElementById("acc-body-" + accId);
   if (!targetBody) return;
 
-  const isAlreadyOpen = !targetBody.classList.contains("hidden");
+  const isAlreadyOpen = !targetBody.classList.contains("hidden") && targetBody.style.display !== "none";
+  collapseAllSettingsAccordions();
+
   if (isAlreadyOpen && !forceOpen) {
-    targetBody.classList.add("hidden");
-    const arrow = document.getElementById("acc-arrow-" + accId);
-    if (arrow) arrow.classList.remove("rotate-180");
-    openSettingsAccId = null;
     return;
   }
 
-  // Réduit tous les autres blocs (un seul bloc déplié à la fois)
-  document.querySelectorAll(".settings-acc-body").forEach((el) => el.classList.add("hidden"));
-  document.querySelectorAll(".settings-acc-arrow").forEach((el) => el.classList.remove("rotate-180"));
-
   targetBody.classList.remove("hidden");
+  targetBody.style.display = "";
   const arrow = document.getElementById("acc-arrow-" + accId);
   if (arrow) arrow.classList.add("rotate-180");
+  const headerBtn = targetBody.closest(".settings-acc-item")?.querySelector(":scope > button");
+  if (headerBtn) headerBtn.setAttribute("aria-expanded", "true");
   openSettingsAccId = accId;
   currentInstallerSubTab = accId;
 
@@ -55,6 +64,8 @@ function toggleSettingsAccordion(accId, forceOpen = false) {
   } else if (accId === "system") {
     loadStorageStatus();
     loadUpdateStatus();
+  } else if (accId === "pairing" && typeof loadPairingInfo === "function") {
+    loadPairingInfo();
   }
 }
 
@@ -101,13 +112,8 @@ function filterSettingsAccordions(query) {
 
   if (q && firstVisibleId) {
     toggleSettingsAccordion(firstVisibleId, true);
-  } else if (!q) {
-    if (openSettingsAccId) {
-      toggleSettingsAccordion(openSettingsAccId, true);
-    } else {
-      document.querySelectorAll(".settings-acc-body").forEach((el) => el.classList.add("hidden"));
-      document.querySelectorAll(".settings-acc-arrow").forEach((el) => el.classList.remove("rotate-180"));
-    }
+  } else {
+    collapseAllSettingsAccordions();
   }
 }
 
@@ -305,10 +311,8 @@ function updateSettingsAccordionSummaries() {
 
   // 6. Système
   const rtcEl = document.getElementById("inst-clock-val");
-  const frontVer = typeof getFrontendVersionLabel === "function" ? getFrontendVersionLabel() : "v0.0.8";
-  const backVer = typeof getBackendVersionLabel === "function" ? getBackendVersionLabel() : "";
+  const appVer = typeof getUnifiedVersionLabel === "function" ? getUnifiedVersionLabel() : "v0.0.9";
   const rtc = rtcEl ? rtcEl.textContent.trim() : "--:--";
-  const verSummary = backVer ? `Front ${frontVer} • Back ${backVer}` : `Front ${frontVer}`;
   const sumSys = document.getElementById("acc-sum-system");
   if (sumSys) {
     const warnSuffix = (currentStorageStatus && currentStorageStatus.persistent === false)
@@ -317,7 +321,7 @@ function updateSettingsAccordionSummaries() {
     const updSuffix = (currentUpdateStatus && currentUpdateStatus.last_check && currentUpdateStatus.last_check.update_available)
       ? " • ⬆️ MAJ dispo"
       : "";
-    sumSys.textContent = `RTC ${rtc} • ${verSummary}${warnSuffix}${updSuffix}`;
+    sumSys.textContent = `RTC ${rtc} • ${appVer}${warnSuffix}${updSuffix}`;
   }
 
   // 7. Expert

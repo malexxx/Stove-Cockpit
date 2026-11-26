@@ -7,60 +7,6 @@
 function renderCockpitView_intentions(T, caps) {
   const zone = getCockpitActiveZone(caps);
   const Z = getCockpitZoneValues(zone, T, caps);
-  const isContainerSil = Boolean(T.isContainerSil);
-  const silTimerActive = isContainerSil && T.isSilActive && T.remSec > 0;
-  const silBtnActive = isContainerSil ? silTimerActive : Boolean(T.isSilActive);
-  const silBadgeTxt = silTimerActive
-    ? `${Math.floor(T.remSec / 3600)}h${String(Math.floor((T.remSec % 3600) / 60)).padStart(2, "0")}`
-    : (silBtnActive ? "Actif" : "OFF");
-  const isAutoActive = T.autoIdx > 0;
-  const isBoostActive = T.pwfVal > 0;
-
-  const intentCards = [];
-  if (caps.has_auto !== false) {
-    intentCards.push(`
-        <button type="button" onclick="setTriArcAutoOption(${T.autoIdx === 2 ? 0 : 2})"
-          class="rounded-3xl border-2 p-3.5 text-left transition cursor-pointer space-y-1 ${isAutoActive
-            ? "bg-orange-950/60 border-orange-400 text-white shadow-[0_0_15px_rgba(249,115,22,0.25)]"
-            : "bg-slate-900/90 border-slate-800 hover:border-cyan-500/60 text-slate-200"}">
-          <div class="flex items-center justify-between">
-            <span class="text-xl">✨</span>
-            <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${isAutoActive ? "bg-orange-600 text-white" : "bg-slate-800 text-slate-400"}">${T.autoIdx === 2 ? "Auto" : (T.autoIdx === 1 ? "Ventil" : "OFF")}</span>
-          </div>
-          <div class="text-xs font-extrabold">Confort Auto</div>
-          <div class="text-[11px] text-slate-400 leading-tight">Le poêle dose flamme et air tout seul.</div>
-        </button>
-    `);
-  }
-  if (caps.has_boost !== false) {
-    intentCards.push(`
-        <button type="button" onclick="toggleTriArcOptionBubble('boost')"
-          class="rounded-3xl border-2 p-3.5 text-left transition cursor-pointer space-y-1 ${isBoostActive
-            ? "bg-rose-950/60 border-rose-400 text-white shadow-[0_0_15px_rgba(244,63,94,0.25)]"
-            : "bg-slate-900/90 border-slate-800 hover:border-rose-500/60 text-slate-200"}">
-          <div class="flex items-center justify-between">
-            <span class="text-xl">🚀</span>
-            <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${isBoostActive ? "bg-rose-600 text-white" : "bg-slate-800 text-slate-400"}">${T.pwfVal === 1 ? "Actif" : (T.pwfVal === 2 ? "Prog" : "OFF")}</span>
-          </div>
-          <div class="text-xs font-extrabold">Coup de chaud</div>
-          <div class="text-[11px] text-slate-400 leading-tight">Chauffe maximale temporaire (Powerful).</div>
-        </button>
-    `);
-  }
-  const silenceSpanCls = intentCards.length === 2 ? "col-span-2 " : "";
-  intentCards.push(`
-        <button type="button" onclick="toggleTriArcOptionBubble('silence')"
-          class="${silenceSpanCls}rounded-3xl border-2 p-3.5 text-left transition cursor-pointer space-y-1 ${silBtnActive
-            ? "bg-purple-950/65 border-purple-400 text-white shadow-[0_0_15px_rgba(168,85,247,0.25)]"
-            : "bg-slate-900/90 border-slate-800 hover:border-purple-500/60 text-slate-200"}">
-          <div class="flex items-center justify-between">
-            <span class="text-xl">🤫</span>
-            <span ${silTimerActive ? 'id="triarc-silence-btn-timer"' : ""} class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full tabular-nums ${silBtnActive ? "bg-purple-600 text-white" : "bg-slate-800 text-slate-400"}">${silBadgeTxt}</span>
-          </div>
-          <div class="text-xs font-extrabold">Soirée calme</div>
-          <div class="text-[11px] text-slate-400 leading-tight">${isContainerSil ? "Convection douce minutée." : "Ralenti silencieux immédiat."}</div>
-        </button>
-  `);
 
   return `
     <div class="space-y-2.5">
@@ -87,10 +33,7 @@ function renderCockpitView_intentions(T, caps) {
         </div>
       </div>
 
-      <!-- Grille d'intentions humaines -->
-      <div class="grid grid-cols-2 gap-2.5">
-        ${intentCards.join("")}
-      </div>
+      ${renderCockpitModeBar(T, zone)}
 
       <button type="button" onclick="cockpitOpenSheet('manual')"
         class="w-full py-2.5 px-3 rounded-2xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-xs font-bold text-slate-300 flex items-center justify-between cursor-pointer">
@@ -112,8 +55,8 @@ function renderCockpitView_context_hmi(T, caps) {
   const isIgnition = T.st >= 1 && T.st <= 4;
   const isCooling = T.st === 7;
   const isOff = T.st === 0;
-  const isAutoFull = T.autoIdx === 2 && !isOff && !T.isAlarm;
   const isFanAuto = (zone === "AMB") && (T.autoIdx === 1 || T.autoIdx === 2 || Z.fanSp === 8);
+  const isAutoFull = Number(T.autoPwr) === 1 && isFanAuto && !isOff && !T.isAlarm;
 
   let contextCardHtml = "";
 
@@ -140,7 +83,7 @@ function renderCockpitView_context_hmi(T, caps) {
           <span class="text-xs font-mono text-slate-400">Ambiance ${T.realAmb}°</span>
         </div>
         <button type="button" onclick="handleDynamicPowerAction()"
-          class="w-full py-4 rounded-3xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-black text-base shadow-[0_0_24px_rgba(234,88,12,0.45)] flex items-center justify-center gap-2 cursor-pointer">
+          class="w-full py-4 rounded-3xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-base shadow-[0_0_24px_rgba(16,185,129,0.45)] flex items-center justify-center gap-2 cursor-pointer">
           <span>🔥</span><span>Allumer le poêle</span>
         </button>
         <div class="flex items-center justify-between bg-slate-950/80 border border-slate-800 rounded-2xl px-3.5 py-2.5">
@@ -242,7 +185,7 @@ function renderCockpitView_spatial_flow(T, caps) {
   const hasSX = ducts.some(d => d.id === "SX");
   const hasDX = ducts.some(d => d.id === "DX");
   const isFanAuto = (zone === "AMB") && (T.autoIdx === 1 || T.autoIdx === 2 || Z.fanSp === 8);
-  const isAutoTotal = T.autoIdx === 2;
+  const isPwrAuto = Number(T.autoPwr) === 1;
   const sxFlowActive = T.st !== 0 && T.realFanSx > 0;
   const dxFlowActive = T.st !== 0 && T.realFanDx > 0;
 
@@ -312,8 +255,8 @@ function renderCockpitView_spatial_flow(T, caps) {
             <button type="button" onclick="cockpitStepTemp('${zone}', 1)" class="w-11 h-11 rounded-2xl bg-orange-600 text-white font-black text-xl cursor-pointer">+</button>
           </div>
         </div>
-        ${Z.showFan ? renderCockpitSegmentedFan(zone, Z.fanSp, Z.fanReal, caps, isFanAuto) : ""}
-        ${Z.showPwr ? renderCockpitSegmentedPower(T.pwrSp, T.realPwr, caps, isAutoTotal) : ""}
+        ${Z.showFan ? renderCockpitSegmentedFan(zone, Z.fanSp, Z.fanReal, caps, isFanAuto, isPwrAuto) : ""}
+        ${Z.showPwr ? renderCockpitSegmentedPower(T.pwrSp, T.realPwr, caps, isPwrAuto, isFanAuto) : ""}
       </div>
 
       ${renderCockpitModeBar(T, zone, true)}
@@ -344,8 +287,12 @@ function renderCockpitView_vernier(T, caps) {
   let displayVal = fmtTriArcTempSp(Z.spT);
   let subInfo = `Mesuré ${Z.realT}°`;
   let lockedMsg = "";
+  let lockedUnlockIdx = 0;
   let stepFnNeg = `cockpitStepTemp('${zone}', -1)`;
   let stepFnPos = `cockpitStepTemp('${zone}', 1)`;
+
+  const isZoneFanAuto = zone === "AMB" && (T.autoIdx === 1 || T.autoIdx === 2 || Z.fanSp === 8);
+  const isPwrAuto = Number(T.autoPwr) === 1;
 
   if (axis === "fan") {
     curVal = Math.round(Z.fanSp);
@@ -353,8 +300,9 @@ function renderCockpitView_vernier(T, caps) {
     maxVal = fanMax;
     displayVal = fmtTriArcFan(Z.fanSp);
     subInfo = `Ventilation réelle : ${fmtTriArcFan(Z.fanReal)}`;
-    if (zone === "AMB" && (T.autoIdx === 1 || T.autoIdx === 2 || Z.fanSp === 8)) {
+    if (isZoneFanAuto) {
       lockedMsg = "Verrouillé par le mode Auto";
+      lockedUnlockIdx = isPwrAuto ? 3 : 0;
     }
     stepFnNeg = `cockpitStepFan('${zone}', -1)`;
     stepFnPos = `cockpitStepFan('${zone}', 1)`;
@@ -364,7 +312,10 @@ function renderCockpitView_vernier(T, caps) {
     maxVal = pMax;
     displayVal = `P${curVal}`;
     subInfo = `Puissance réelle : P${Math.round(T.realPwr)}`;
-    if (T.autoIdx === 2) lockedMsg = "Verrouillé par Auto Total";
+    if (isPwrAuto) {
+      lockedMsg = "Verrouillé par Flamme Auto";
+      lockedUnlockIdx = isZoneFanAuto ? 1 : 0;
+    }
     stepFnNeg = "cockpitStepPower(-1)";
     stepFnPos = "cockpitStepPower(1)";
   }
@@ -399,7 +350,7 @@ function renderCockpitView_vernier(T, caps) {
         ${lockedMsg ? `
           <div class="py-3 px-4 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-cyan-300 font-bold flex items-center justify-center gap-2">
             <span>${lockedMsg}</span>
-            <button type="button" onclick="setTriArcAutoOption(0)" class="px-2 py-1 rounded-lg bg-slate-800 text-white text-[11px] cursor-pointer">Manuel</button>
+            <button type="button" onclick="setTriArcAutoOption(${lockedUnlockIdx})" class="px-2 py-1 rounded-lg bg-slate-800 text-white text-[11px] cursor-pointer">Manuel</button>
           </div>
         ` : `
           <div class="flex items-center gap-2">
@@ -481,16 +432,16 @@ function renderCockpitView_ambient_glass(T, caps) {
 
         ${(hasSX || hasDX) ? `
           <div class="flex items-center justify-center gap-2 pt-1">
-            <button type="button" onclick="cockpitSelectZone('AMB')"
-              class="px-3 py-1 rounded-full text-[11px] font-bold border cursor-pointer ${zone === "AMB" ? "bg-white/20 border-white/40 text-white" : "bg-white/5 border-white/10 text-slate-300"}">
-              Salon ${T.realAmb}°
-            </button>
             ${hasSX ? `
               <button type="button" onclick="cockpitSelectZone('SX')"
                 class="px-3 py-1 rounded-full text-[11px] font-bold border cursor-pointer ${zone === "SX" ? "bg-cyan-500/30 border-cyan-300/60 text-white" : "bg-white/5 border-white/10 text-slate-300"}">
                 ${escapeHtml(getDuctName("SX"))} ${T.realSx}°
               </button>
             ` : ""}
+            <button type="button" onclick="cockpitSelectZone('AMB')"
+              class="px-3 py-1 rounded-full text-[11px] font-bold border cursor-pointer ${zone === "AMB" ? "bg-white/20 border-white/40 text-white" : "bg-white/5 border-white/10 text-slate-300"}">
+              Salon ${T.realAmb}°
+            </button>
             ${hasDX ? `
               <button type="button" onclick="cockpitSelectZone('DX')"
                 class="px-3 py-1 rounded-full text-[11px] font-bold border cursor-pointer ${zone === "DX" ? "bg-sky-500/30 border-sky-300/60 text-white" : "bg-white/5 border-white/10 text-slate-300"}">
