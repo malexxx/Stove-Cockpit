@@ -227,7 +227,7 @@ _DEFAULT_RESTORE_OFFSETS = {
     "duct_left_setpoint": (20.0, 33126),
     "duct_right_setpoint": (20.0, 33124),
     "fun_pwf_set": (0.0, 33154),
-    "standby_set": (0.0, 33130),
+    "standby_set": (0.0, 33148),
     "chrono_week_enable_set": (0.0, 33162),
     "fun_auto_set": (1.0, 33128),
     "fan_front_speed": (3.0, 33132),

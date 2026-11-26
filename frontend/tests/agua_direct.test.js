@@ -77,4 +77,25 @@ describe("AguaDirectProvider", () => {
     expect(custom.customerCode).toBe("112233");
     expect(custom.brandId).toBe("3");
   });
+
+  it("construit les écritures Comfort Clima en octets aux offsets Nobis exposés", () => {
+    const client = new AguaDirectProvider();
+    client._cacheRegistersMap({
+      registers_map: [
+        { reg_key: "comfortclima_ability_set", offset: 33148, reg_type: "SET", is_word: false },
+        { reg_key: "comfortclima_time_set", offset: 33150, reg_type: "SET", is_word: false },
+        { reg_key: "comfortclima_restart_set", offset: 33152, reg_type: "SET", is_word: false },
+      ],
+    });
+    const payload = client._buildRwmsPayload("device", "product", [
+      { offset: 33148, value: 1, regKey: "standby_set" },
+      { offset: 33150, value: 5, regKey: "comfortclima_time_set" },
+      { offset: 33152, value: 2, regKey: "comfortclima_restart_set" },
+    ]);
+
+    expect(payload.Items).toEqual([33148, 33150, 33152]);
+    expect(payload.BitData).toEqual([8, 8, 8]);
+    expect(payload.Masks).toEqual([255, 255, 255]);
+    expect(payload.Values).toEqual([1, 5, 2]);
+  });
 });

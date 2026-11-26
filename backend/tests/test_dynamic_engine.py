@@ -7,6 +7,7 @@ from config import BRANDS_BY_ID, BRANDS_CATALOG
 from telemetry.dynamic_engine import (
     detect_capabilities,
     evaluate_buffer,
+    infer_normalized_status_code,
     parse_registers_map,
     prepare_write_value,
 )
@@ -14,6 +15,42 @@ from telemetry.formula_eval import evaluate_micronova_formula
 
 
 class TestDynamicMicronovaEngine(unittest.TestCase):
+    def test_eco_stop_status_is_not_misclassified_as_off(self):
+        self.assertEqual(infer_normalized_status_code("ECO STOP", 8), 8)
+        self.assertEqual(infer_normalized_status_code("FINAL CLEANING", 6), 0)
+
+    def test_comfortclima_registers_enable_remote_eco_writes(self):
+        register_map = parse_registers_map({
+            "registers_map": [
+                {"reg_key": "comfortclima_ability_set", "offset": 33148, "reg_type": "SET", "is_word": False, "set_min": 0, "set_max": 1},
+                {"reg_key": "comfortclima_time_set", "offset": 33150, "reg_type": "SET", "is_word": False, "set_min": 0, "set_max": 9},
+                {"reg_key": "comfortclima_time_enable", "offset": 33148, "reg_type": "ENABLE", "enable_val": [{"value": 1}]},
+                {"reg_key": "comfortclima_restart_set", "offset": 33152, "reg_type": "SET", "is_word": False, "set_min": 2, "set_max": 5},
+                {"reg_key": "comfortclima_restart_enable", "offset": 33148, "reg_type": "ENABLE", "enable_val": [{"value": 1}]},
+            ]
+        })
+        caps = detect_capabilities(register_map)
+        self.assertTrue(caps["can_write_eco"])
+        self.assertEqual(register_map["comfortclima_ability_set"]["offset"], 33148)
+        self.assertEqual(register_map["comfortclima_time_set"]["set_max"], 9)
+        self.assertEqual(register_map["comfortclima_restart_set"]["set_min"], 2)
+
+        client = AguaCloudClient()
+        client._parse_and_cache_registers_map({"registers_map": list(register_map.values())})
+        payload = client._build_rwms_payload(
+            "device",
+            "product",
+            [
+                (33148, 1, "standby_set"),
+                (33150, 5, "comfortclima_time_set"),
+                (33152, 2, "comfortclima_restart_set"),
+            ],
+        )
+        self.assertEqual(payload["Items"], [33148, 33150, 33152])
+        self.assertEqual(payload["BitData"], [8, 8, 8])
+        self.assertEqual(payload["Masks"], [255, 255, 255])
+        self.assertEqual(payload["Values"], [1, 5, 2])
+
     def test_brands_catalog_contains_35_plus_brands_and_piazzetta_bridge(self):
         self.assertGreaterEqual(len(BRANDS_CATALOG), 36)
         self.assertIn("nobis", BRANDS_BY_ID)

@@ -59,7 +59,9 @@ def _normalize_batch_commands(
 
         is_trim = offset in (70, 71) or rk in ("trim_pellet_pct", "trim_exhaust_pct")
         has_cloud_standby = comm_mode == "agua_cloud" and agua_client._find_register_meta(offset, rk)[1]
-        is_standby = (offset == 33130 or rk == "standby_set") and not has_cloud_standby
+        is_standby = (offset in (33130, 33148) or rk == "standby_set") and not has_cloud_standby
+        is_comfort_setting = rk in ("comfortclima_time_set", "comfortclima_restart_set")
+        has_cloud_comfort_setting = comm_mode == "agua_cloud" and agua_client._find_register_meta(offset, rk)[1]
         normalized_cmds.append({
             "reg_key": rk,
             "offset": offset,
@@ -69,8 +71,12 @@ def _normalize_batch_commands(
             "in_catalog": rk in regs,
             "is_trim": is_trim,
             "is_standby": is_standby,
+            "is_comfort_setting_unavailable": is_comfort_setting and comm_mode == "agua_cloud" and not has_cloud_comfort_setting,
         })
-        if not (comm_mode == "agua_cloud" and (is_trim or is_standby)):
+        if not (
+            comm_mode == "agua_cloud"
+            and (is_trim or is_standby or (is_comfort_setting and not has_cloud_comfort_setting))
+        ):
             cloud_items_spec.append((offset, val, rk))
 
     return normalized_cmds, cloud_items_spec
@@ -138,6 +144,8 @@ def _persist_and_log_batch(
                 c_details = "Mémorisé localement (à valider sur radiocommande: MENU ▸ PROG. UTILISATEUR ▸ MÉLANGE G/A)"
             elif comm_mode == "agua_cloud" and c.get("is_standby"):
                 c_details = "Mémorisé localement (à régler sur radiocommande: MENU ▸ UTILISATEUR ▸ COMFORT CLIMA)"
+            elif comm_mode == "agua_cloud" and c.get("is_comfort_setting_unavailable"):
+                c_details = "Mémorisé localement : ce registre Comfort Clima n'est pas exposé par la cartographie Agua IOT."
             conn.execute(
                 """
                 INSERT INTO command_audit (timestamp, reg_key, offset, label, old_value, new_value, comm_mode, status, details)
@@ -162,6 +170,13 @@ def _persist_and_log_batch(
                 "COMMAND",
                 "PILOTAGE",
                 f"{c['label']} [Offset {c['offset']}] : consigne mémorisée à {c['new_val']}. La fonction Comfort Clima est régie en local par la radiocommande Nobis (MENU ▸ UTILISATEUR ▸ COMFORT CLIMA) et n'est pas modifiable à distance via l'API Cloud Agua IOT.",
+                comm_mode,
+            )
+        elif comm_mode == "agua_cloud" and c.get("is_comfort_setting_unavailable"):
+            db_log(
+                "WARNING",
+                "PILOTAGE",
+                f"{c['label']} [Offset {c['offset']}] mémorisé localement : ce registre Comfort Clima n'est pas exposé par la cartographie Agua IOT.",
                 comm_mode,
             )
         else:

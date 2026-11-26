@@ -19,7 +19,9 @@ const TRIARC_REG_META = {
   power_level: { label: "🔥 Puissance de combustion", fmt: (v) => `P${v}` },
   fun_pwf_set: { label: "🚀 Mode Boost (Puissance)", fmt: (v) => (Number(v) === 1 ? "🚀 ON" : (Number(v) === 2 ? "⏱️ PROG" : "OFF")) },
   fun_auto_set: { label: "🔥 Modulation Auto (Puissance)", fmt: (v) => (Number(v) === 1 ? "ACTIF" : "OFF") },
-  standby_set: { label: "💤 Mode Éco (Stand-by)", fmt: (v) => (Number(v) === 1 ? "ACTIF" : "OFF") },
+  standby_set: { label: "💤 Comfort Clima", fmt: (v) => (Number(v) === 1 ? "ACTIF" : "OFF") },
+  comfortclima_time_set: { label: "⏱️ Temporisation Comfort Clima", fmt: (v) => `${v} min` },
+  comfortclima_restart_set: { label: "🌡️ Delta redémarrage Comfort Clima", fmt: (v) => `${v} °C` },
   chrono_week_enable_set: { label: "⏱️ Chrono Hebdomadaire", fmt: (v) => (Number(v) === 1 ? "ON" : "OFF") }
 };
 
@@ -210,6 +212,20 @@ function setTriArcEcoOption(val) {
     return;
   }
   queueTriArcChanges([{ reg_key: "standby_set", value: Number(val) }]);
+}
+
+function setTriArcComfortClimaSetting(regKey, value) {
+  const allowed = {
+    comfortclima_time_set: [0, 9],
+    comfortclima_restart_set: [2, 5],
+  };
+  const limits = allowed[regKey];
+  const numericValue = Number(value);
+  if (!limits || !Number.isInteger(numericValue) || numericValue < limits[0] || numericValue > limits[1]) {
+    showToast("Réglage Comfort Clima invalide.", true);
+    return;
+  }
+  queueTriArcChanges([{ reg_key: regKey, value: numericValue }]);
 }
 
 function setTriArcAutoOption(idx) {

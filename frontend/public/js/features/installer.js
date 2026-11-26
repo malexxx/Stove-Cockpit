@@ -196,7 +196,8 @@ function renderEepromTable() {
     const offNum = Number(r.offset);
     const memType = r.mem_type || (offNum >= 32768 ? "EEPROM" : "RAM");
     const isTrim = offNum === 70 || offNum === 71 || r.reg_key === "trim_pellet_pct" || r.reg_key === "trim_exhaust_pct";
-    const isUnwritableStandby = (offNum === 33130 || r.reg_key === "standby_set") && commMode === "agua_cloud" && !caps.can_write_eco;
+    const isUnwritableStandby = (offNum === 33130 || offNum === 33148 || r.reg_key === "standby_set"
+      || r.reg_key === "comfortclima_ability_set") && commMode === "agua_cloud" && !caps.can_write_eco;
     const isRemoteOnly = (commMode === "agua_cloud" && isTrim) || isUnwritableStandby;
     let liveVal = (rawObj[offNum] !== undefined) ? rawObj[offNum] : (r.current_val ?? "--");
     if (isUnwritableStandby && rawObj[offNum] === undefined && ![8, 9].includes(Number(latestData.status_code ?? 0))) {

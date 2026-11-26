@@ -509,7 +509,7 @@ class AguaCloudClient:
 
     _BYTE_OFFSETS = frozenset({
         8, 11, 16, 22, 28, 29, 31, 32, 34, 40, 70, 71, 115, 232,
-        33162, 34048, 34049, 34050, 34051, 34052, 34053,
+        33148, 33150, 33152, 33162, 34048, 34049, 34050, 34051, 34052, 34053,
     })
 
     def _find_register_meta(self, offset: int, reg_key: str | None) -> tuple[dict[str, Any] | None, bool]:

@@ -204,8 +204,10 @@ function getTriArcTelemetryState() {
   const remSec = isContainerSil ? rawRemSec : 0;
   const isDemoMode = window.stoveProvider?.getMode?.() === "demo";
   const canWriteEco = Boolean(caps.can_write_eco) || getActiveCommMode() === "simulation" || getActiveCommMode() === "local_gateway" || isDemoMode;
-  const rawLiveEco = (latestData.standby_enabled !== undefined && latestData.standby_enabled !== null)
-    ? latestData.standby_enabled
+  const rawLiveEco = (latestData.comfortclima_ability_set !== undefined && latestData.comfortclima_ability_set !== null)
+    ? latestData.comfortclima_ability_set
+    : (latestData.standby_enabled !== undefined && latestData.standby_enabled !== null)
+      ? latestData.standby_enabled
     : (canWriteEco ? getRegVal("standby_set", 0) : 0);
   const ecoRegVal = canWriteEco
     ? Number(getTriArcLiveOrOpt("standby_set", rawLiveEco))
@@ -821,6 +823,14 @@ function renderTriArcBottomModes(T, zone = triArcZone) {
         </button>
       `;
   })();
+  const ecoButtonHtml = T.canWriteEco ? `
+      <button type="button" onclick="toggleTriArcOptionBubble('eco')"
+        title="Comfort Clima (ON/OFF, temporisation et Delta T°)"
+        class="flex-1 h-14 sm:h-15 min-h-[54px] rounded-2xl border-2 flex flex-col items-center justify-center transition cursor-pointer ${T.isEco ? 'bg-emerald-950/80 border-emerald-400 text-emerald-200 shadow-[0_0_12px_rgba(16,185,129,0.35)]' : 'bg-slate-900/90 border-slate-700 text-slate-400 hover:border-emerald-400'}">
+        <span class="text-2xl leading-none">💤</span>
+        ${T.isEco ? '<span class="text-[9.5px] font-black uppercase text-emerald-300 mt-0.5">Actif</span>' : ""}
+      </button>
+  ` : "";
 
   return `
     <div class="flex items-stretch gap-2 pt-1 pb-1">
@@ -843,6 +853,9 @@ function renderTriArcBottomModes(T, zone = triArcZone) {
         ${autoBadge}
       </button>
       ` : ""}
+
+      <!-- Comfort Clima, uniquement si le registre SET est exposé -->
+      ${ecoButtonHtml}
 
       <!-- 3. Boost -->
       ${boostButtonHtml}
@@ -954,6 +967,8 @@ function renderTriArcFloatingOptionBubble(T) {
   }
 
   if (triArcExpandedMode === "eco") {
+    const comfortTime = Number(getTriArcLiveOrOpt("comfortclima_time_set", latestData.comfortclima_time_set ?? getRegVal("comfortclima_time_set", 5)));
+    const comfortRestart = Number(getTriArcLiveOrOpt("comfortclima_restart_set", latestData.comfortclima_restart_set ?? getRegVal("comfortclima_restart_set", 2)));
     const phaseBadgeHtml = T.st === 8
       ? `<div class="py-2.5 px-3 rounded-2xl bg-cyan-950/80 border border-cyan-500 text-cyan-300 text-xs font-bold flex items-center justify-center gap-2 shadow">
           <span>⏳</span><span>PHASE ACTIVE : 8 = ECO STOP</span>
@@ -975,6 +990,18 @@ function renderTriArcFloatingOptionBubble(T) {
         <div class="grid grid-cols-2 gap-2 text-xs font-bold pt-1">
           <button type="button" onclick="setTriArcEcoOption(0)" class="py-2.5 rounded-2xl border cursor-pointer ${!T.isEco ? 'bg-slate-700 border-white text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}">OFF</button>
           <button type="button" onclick="setTriArcEcoOption(1)" class="py-2.5 rounded-2xl border flex items-center justify-center gap-1.5 cursor-pointer ${T.isEco ? 'bg-emerald-600 border-emerald-300 text-white' : 'bg-slate-950 border-slate-800 text-slate-300'}"><span class="text-sm">💤</span><span>ACTIF</span></button>
+        </div>
+        <div class="grid grid-cols-2 gap-2 text-[11px] pt-1">
+          <label class="flex flex-col gap-1 text-slate-300">Temporisation extinction
+            <select onchange="setTriArcComfortClimaSetting('comfortclima_time_set', this.value)" class="rounded-xl bg-slate-950 border border-slate-700 px-2 py-2 text-white">
+              ${Array.from({ length: 10 }, (_, value) => `<option value="${value}" ${comfortTime === value ? "selected" : ""}>${value} min</option>`).join("")}
+            </select>
+          </label>
+          <label class="flex flex-col gap-1 text-slate-300">Delta redémarrage
+            <select onchange="setTriArcComfortClimaSetting('comfortclima_restart_set', this.value)" class="rounded-xl bg-slate-950 border border-slate-700 px-2 py-2 text-white">
+              ${[2, 3, 4, 5].map((value) => `<option value="${value}" ${comfortRestart === value ? "selected" : ""}>${value} °C</option>`).join("")}
+            </select>
+          </label>
         </div>
       `
       : "";

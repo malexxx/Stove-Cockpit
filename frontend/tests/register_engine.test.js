@@ -171,6 +171,30 @@ describe("Micronova register engine (parité backend)", () => {
     expect(resRegOn.latest.standby_enabled).toBe(1);
   });
 
+  it("décode ECO STOP comme état 8 et expose les trois registres Comfort Clima", () => {
+    const rmap = parseRegistersMap({
+      registers_map: [
+        { reg_key: "status_get", offset: 8, formula: "#", reg_type: "GET", enc_val: [{ lang: "ENG", value: 8, description: "ECO STOP" }] },
+        { reg_key: "comfortclima_ability_set", offset: 33148, formula: "#", reg_type: "SET", is_word: false, set_min: 0, set_max: 1 },
+        { reg_key: "comfortclima_time_set", offset: 33150, formula: "#", reg_type: "SET", is_word: false, set_min: 0, set_max: 9 },
+        { reg_key: "comfortclima_time_enable", offset: 33148, formula: "#", reg_type: "ENABLE", enable_val: [{ value: 1 }] },
+        { reg_key: "comfortclima_restart_set", offset: 33152, formula: "#", reg_type: "SET", is_word: false, set_min: 2, set_max: 5 },
+        { reg_key: "comfortclima_restart_enable", offset: 33148, formula: "#", reg_type: "ENABLE", enable_val: [{ value: 1 }] },
+      ],
+    });
+    const result = decodeBufferToTelemetry(
+      { 8: 8, 33148: 1, 33150: 5, 33152: 2 },
+      rmap,
+      { agua_brand: "nobis" },
+    );
+    expect(result.latest.status_code).toBe(8);
+    expect(result.latest.standby_enabled).toBe(1);
+    expect(result.latest.comfortclima_ability_set).toBe(1);
+    expect(result.latest.comfortclima_time_set).toBe(5);
+    expect(result.latest.comfortclima_restart_set).toBe(2);
+    expect(result.capabilities.can_write_eco).toBe(true);
+  });
+
   it("detectCapabilities résout les clés retour canalization_2sx_* et canalization_2dx_* sur Nobis A10", () => {
     const nobisMap = parseRegistersMap({
       registers_map: [

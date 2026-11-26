@@ -1,4 +1,4 @@
-"""Décodage des 76 offsets matériels Micronova / Agua IOT, mode hors-ligne et helpers télémétriques partagés."""
+"""Décodage des offsets matériels Micronova / Agua IOT, mode hors-ligne et helpers télémétriques partagés."""
 from datetime import datetime
 import json
 import logging
@@ -338,7 +338,10 @@ def decode_hardware_buffer(
     p_cmd = int(round(float(_dyn("power_level", raw_buf.get(33120, r_val.get("power_level", 4))))))
     p_actual = int(round(float(_dyn("real_power", raw_buf.get(11, p_cmd)))))
     sb_fallback = r_val.get("standby_set", 0) if comm_mode == "simulation" else 0
-    raw_sb = _dyn("standby_get", _dyn("standby_set", raw_buf.get(33130)))
+    raw_sb = _dyn("standby_get", _dyn("standby_set", raw_buf.get(33148, raw_buf.get(33130))))
+    comfortclima_ability = _dyn("standby_set", raw_buf.get(33148, raw_buf.get(33130)))
+    comfortclima_time = _dyn("comfortclima_time_set", raw_buf.get(33150))
+    comfortclima_restart = _dyn("comfortclima_restart_set", raw_buf.get(33152))
     standby_en = 1 if (state in (8, 9)) else (
         (1 if int(round(float(raw_sb))) > 0 else 0)
         if raw_sb is not None
@@ -456,6 +459,9 @@ def decode_hardware_buffer(
         "power_actual": p_actual,
         "fun_auto_set": fun_auto_val,
         "standby_enabled": standby_en,
+        "comfortclima_ability_set": int(round(float(comfortclima_ability))) if comfortclima_ability is not None else None,
+        "comfortclima_time_set": int(round(float(comfortclima_time))) if comfortclima_time is not None else None,
+        "comfortclima_restart_set": int(round(float(comfortclima_restart))) if comfortclima_restart is not None else None,
         "fun_pwf_set": pwf_val,
         "set_silece_set": _is_app_silence_active(settings),
         "fan_front_speed": fan_front_spd,

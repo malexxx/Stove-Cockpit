@@ -328,6 +328,7 @@ export function inferNormalizedStatusCode(statusDesc, rawStatus) {
     const up = String(statusDesc).trim().toUpperCase();
     if (up.includes("ALARM") || up.includes("ALLARM")) return up.includes("MEM") ? 11 : 10;
     if (up === "ON") return 5;
+    if (up.includes("ECO STOP") || up.includes("ECO-STOP")) return 8;
     for (const kw of STATUS_OFF_KEYWORDS) {
       if (up.includes(kw)) return 0;
     }
@@ -416,7 +417,8 @@ export function decodeBufferToTelemetry(rawBuf, registerMap, settings = {}, weat
   const funPwfVal = rawPwf !== undefined && rawPwf !== null
     ? Math.max(0, Math.round(Number(rawPwf)))
     : 0;
-  const rawSb = dyn("standby_get", dyn("standby_set", rawBuf[33130]));
+  const rawSb = dyn("standby_get", dyn("standby_set", rawBuf[33148] ?? rawBuf[33130]));
+  const comfortClimaAbility = dyn("standby_set", rawBuf[33148] ?? rawBuf[33130]);
   const standbyVal = statusCode === 8 || statusCode === 9
     ? 1
     : (rawSb !== undefined && rawSb !== null ? (Math.round(Number(rawSb)) > 0 ? 1 : 0) : 0);
@@ -449,6 +451,11 @@ export function decodeBufferToTelemetry(rawBuf, registerMap, settings = {}, weat
     power_actual: pActual,
     fun_auto_set: funAutoVal,
     standby_enabled: standbyVal,
+    comfortclima_ability_set: comfortClimaAbility !== undefined && comfortClimaAbility !== null
+      ? Math.round(Number(comfortClimaAbility))
+      : null,
+    comfortclima_time_set: dyn("comfortclima_time_set", rawBuf[33150]),
+    comfortclima_restart_set: dyn("comfortclima_restart_set", rawBuf[33152]),
     fun_pwf_set: funPwfVal,
     set_silece_set: 0,
     fan_front_speed: Math.round(Number(dyn("fan_front_speed", rawBuf[33132] ?? 3))),
@@ -488,6 +495,8 @@ export function decodeBufferToTelemetry(rawBuf, registerMap, settings = {}, weat
     ["power_level", latest.power_level],
     ["fun_auto_set", latest.fun_auto_set],
     ["standby_set", latest.standby_enabled],
+    ["comfortclima_time_set", latest.comfortclima_time_set],
+    ["comfortclima_restart_set", latest.comfortclima_restart_set],
     ["fun_pwf_set", latest.fun_pwf_set],
     ["temp_amb_setpoint", latest.temp_amb_setpoint],
     ["fan_front_speed", latest.fan_front_speed],

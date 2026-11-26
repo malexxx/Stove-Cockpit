@@ -193,6 +193,8 @@ AGUA_REG_KEY_ALIASES: dict[str, list[str]] = {
     "fun_pwf_get": list(_CANONICAL_ALIASES.get("fun_pwf_get", ["fun_pwf_get", "powerful_get", "enable_pwf_get", "boost_get"])),
     "standby_set": list(_CANONICAL_ALIASES.get("standby_set", ["standby_set", "eco_mode_set", "energy_saving_set", "comfort_clima_set", "clima_confort_set"])),
     "standby_get": list(_CANONICAL_ALIASES.get("standby_get", ["standby_get", "eco_mode_get", "energy_saving_get", "comfort_clima_get", "clima_confort_get"])),
+    "comfortclima_time_set": list(_CANONICAL_ALIASES.get("comfortclima_time_set", ["comfortclima_time_set"])),
+    "comfortclima_restart_set": list(_CANONICAL_ALIASES.get("comfortclima_restart_set", ["comfortclima_restart_set"])),
     "chrono_week_enable_set": list(_CANONICAL_ALIASES.get("chrono_week_enable_set", ["chrono_week_enable_set", "chrono_enable_set"])),
 }
 
@@ -230,6 +232,9 @@ TELEMETRY_COLUMNS: dict[str, str] = {
     "power_actual": "INTEGER DEFAULT 4",
     "fun_auto_set": "INTEGER DEFAULT 0",
     "standby_enabled": "INTEGER DEFAULT 0",
+    "comfortclima_ability_set": "INTEGER DEFAULT NULL",
+    "comfortclima_time_set": "INTEGER DEFAULT NULL",
+    "comfortclima_restart_set": "INTEGER DEFAULT NULL",
     "fun_pwf_set": "INTEGER DEFAULT 0",
     "set_silece_set": "INTEGER DEFAULT 0",
     "fan_front_speed": "INTEGER DEFAULT 3",

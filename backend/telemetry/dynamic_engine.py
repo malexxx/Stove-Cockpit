@@ -425,6 +425,8 @@ def infer_normalized_status_code(status_desc: str | None, raw_status: int | None
             return 11 if ("MEM" in up) else 10
         if up == "ON":
             return 5
+        if "ECO STOP" in up or "ECO-STOP" in up:
+            return 8
         if any(k in up for k in STATUS_OFF_KEYWORDS):
             return 0
         for keywords, normalized in _STATUS_KEYWORD_RULES:
